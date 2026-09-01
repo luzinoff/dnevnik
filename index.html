@@ -279,18 +279,47 @@ const ACT_GROUPS=[
    {k:'dating',  ic:'💐', lb:'Свидание'}]},
  {g:'Прочее', items:[
    {k:'post', ic:'📣', lb:'Посты'},
-   {k:'sexn', ic:'❤️', lb:'Секс'}]}
+   {k:'sexn', ic:'❤️', lb:'Секс'},
+   /* w0: отметка для наблюдения, в балл дня не идёт */
+   {k:'hand', ic:'❓', lb:'Руч', w0:true}]}
 ];
 const ACTS=[{k:'sport', ic:'🏋️', lb:'Спорт'}, ...ACT_GROUPS.flatMap(g=>g.items)];
+
+/* ---- разбор старого поля sex ----
+   В таблице это была свободная пометка: «+», «++», «1» — было; «-» — не было;
+   «р», «Р», «руч», «Лр» — рукой; плюс отдельные буквы «м», «с», «Л», «др»,
+   смысл которых утрачен — считаем их за секс, как и любую непустую пометку.
+   Комбинации вида «+ р» и «руч Л» означают сразу и то и другое. */
+function parseSex(v){
+  const s=String(v??'').trim();
+  if(!s||s==='-') return {sexn:0,hand:0};
+  const low=s.toLowerCase();
+  /* «р» как отдельное слово или «руч» в любом месте; «др» не в счёт */
+  const hand=/(^|[^а-яё])(р|руч\w*)($|[^а-яё])/.test(low) || /(^|[^а-яё])л?р$/.test(low);
+  /* остаток строки без «ручных» кусков: если что-то осталось — был и секс */
+  const rest=low.replace(/руч\w*/g,'').replace(/(^|[^а-яё])р($|[^а-яё])/g,'$1$2').trim();
+  const plus=(s.match(/\+/g)||[]).length;
+  const sexn = plus ? Math.min(plus,3) : (rest?1:0);
+  return {sexn, hand:hand?1:0};
+}
 
 /* ---- переезд со старых кнопок на новые ----
    Английский был счётчиком 0–3, теперь три отдельные кнопки: 1 балл — Duolingo,
    2 — плюс AI-бот, 3 — плюс носитель. Общее «Общение» стало «Друзьями»,
-   а «Секс» из пометки +/− превратился в такой же счётчик, как остальные. */
-const ACTS_V=1;
+   а «Секс» из свободной пометки развернулся в счётчик + отдельную кнопку «Руч». */
+const ACTS_V=2;
 function migrateActs(){
   if(DB.actsV>=ACTS_V) return;
-  for(const x of Object.values(DB.days||{})){
+  /* Версия 1 уже стёрла поле sex, а пометки «Руч» жили именно в нём.
+     Достаём исходные значения из вшитого seed — там данные нетронуты. */
+  let orig={};
+  if(DB.actsV===1){
+    try{
+      const el=$('#seed');
+      if(el&&el.textContent.trim()) orig=(JSON.parse(el.textContent).days)||{};
+    }catch(e){ console.warn('seed для sex недоступен',e) }
+  }
+  for(const[d,x]of Object.entries(DB.days||{})){
     const e=+x.eng||0;
     if(e>=1) x.eng_duo=1;
     if(e>=2) x.eng_ai=1;
@@ -299,7 +328,12 @@ function migrateActs(){
     const s=+x.social||0;
     if(s) x.friends=Math.min(s,3);
     delete x.social;
-    if(x.sex&&x.sex!=='-') x.sexn=1;
+    const raw = x.sex!=null ? x.sex : (orig[d]||{}).sex;
+    if(raw!=null){
+      const {sexn,hand}=parseSex(raw);
+      if(sexn) x.sexn=sexn; else delete x.sexn;
+      if(hand) x.hand=hand;
+    }
     delete x.sex;
   }
   DB.actsV=ACTS_V;
@@ -394,8 +428,9 @@ const canonSupp=n=>{
 /* ревизия словаря: увеличить при правке SUPP_MERGE — пересчёт пройдёт заново */
 const SUPP_V=6;
 
+const ACT_W=()=>Object.fromEntries(ACTS.map(a=>[a.k,a.w0?0:1]));
 const DEF_CFG={theme:'light',clientId:'',fileId:'',everSignedIn:false,lastSync:0,autoSync:true,
-  weights:Object.fromEntries(ACTS.map(a=>[a.k,1])), suppOrder:[], hidden:[]};
+  weights:ACT_W(), suppOrder:[], hidden:[]};
 
 const BLANK=()=>({days:{},goals:[],notes:{},supps:[],updated:0});
 let DB=BLANK(), CFG={...DEF_CFG}, cur=today(), tab='day';
@@ -415,7 +450,9 @@ function load(){
   }catch(e){} }
   else { seedFromFile(); }
   try{const c=localStorage.getItem(LSC); if(c) CFG=Object.assign({...DEF_CFG},JSON.parse(c));}catch(e){}
-  CFG.weights=Object.assign(Object.fromEntries(ACTS.map(a=>[a.k,1])),CFG.weights||{});
+  CFG.weights=Object.assign(ACT_W(),CFG.weights||{});
+  /* «Руч» — наблюдение, а не достижение: вес держим нулевым */
+  ACTS.filter(a=>a.w0).forEach(a=>CFG.weights[a.k]=0);
 }
 function seedFromFile(){
   try{
