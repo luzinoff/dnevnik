@@ -66,6 +66,13 @@ nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:50;
 .card>h2 .right{margin-left:auto;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--ink-3);font-weight:400}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.sleep-row{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}
+.sleep-row input[type=time]{min-width:0}
+.sleep-out{border:1px solid var(--line);background:var(--accent-soft);border-radius:11px;
+  padding:7px 12px;text-align:center;white-space:nowrap;align-self:end}
+.sleep-out b{display:block;font-size:15px;color:var(--accent);letter-spacing:-.01em}
+@media(max-width:420px){.sleep-row{grid-template-columns:1fr 1fr}
+  .sleep-out{grid-column:1/-1}}
 .row{display:flex;align-items:center;gap:9px}
 .spacer{flex:1}.muted{color:var(--ink-3)}.small{font-size:12.5px}
 label.fld{display:block}
@@ -126,6 +133,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .hm i.d3{background:color-mix(in srgb,var(--accent) 78%,var(--surface-2))}
 .hm i.d4{background:var(--accent)}
 .hm i.today{outline:2px solid var(--accent-2);outline-offset:1px}
+.hm.hm-act i{cursor:pointer;transition:transform .12s}
+.hm.hm-act i:hover{transform:scale(1.28);outline:1.5px solid var(--ink-3);outline-offset:1px}
+.hm.hm-act i:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+.hm i.pick{outline:2px solid var(--ink);outline-offset:1px}
 canvas{width:100%;display:block}
 .modal{position:fixed;inset:0;z-index:100;display:none;align-items:flex-end;justify-content:center}
 .modal.on{display:flex}
@@ -195,6 +206,16 @@ const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
 const r1=v=>v==null?'—':(Math.round(v*10)/10).toLocaleString('ru');
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2200)}
 const fmtH=h=>h==null?'—':`${Math.floor(h)} ч ${pad(Math.round((h%1)*60))} м`;
+/* «22:40» → минуты от полуночи */
+const mins=t=>{const m=/^(\d{1,2}):(\d{2})$/.exec(t||'');return m?+m[1]*60+ +m[2]:null};
+/* Лёг в 23:30, встал в 7:15 — считаем через полночь. Равное время трактуем
+   как сутки без сна, а не как 24 часа: 0 честнее. */
+const hoursBetween=(bed,rise)=>{
+  const a=mins(bed), b=mins(rise);
+  if(a==null||b==null) return null;
+  let d=b-a; if(d<0) d+=1440;
+  return Math.round(d/60*100)/100;
+};
 
 /* ---- активности, из которых складывается оценка дня ---- */
 const ACTS=[
@@ -553,13 +574,23 @@ function rDay(){
   </div>
 
   <div class="card">
-    <h2>😴 Тело <span class="right">${x.sleepH?fmtH(x.sleepH):''}</span></h2>
+    <h2>😴 Тело <span class="right" id="sleepTot">${x.sleepH!=null?fmtH(x.sleepH):''}</span></h2>
     <div class="small muted" style="margin-bottom:6px">Оценка сна</div>
     <div class="rate" id="sq">${[1,2,3,4,5].map(i=>`<button data-v="${i}" class="${x.slept===i?'on':''}">${i}</button>`).join('')}</div>
-    <div class="grid3" style="margin-top:12px">
+    <div class="grid2" style="margin-top:12px">
       <label class="fld"><span>Пульс мин.</span><input type="number" inputmode="numeric" id="pl" value="${x.pulse??''}" placeholder="—"></label>
       <label class="fld"><span>Вес, кг</span><input type="number" step="0.1" inputmode="decimal" id="wt" value="${x.weight??''}" placeholder="—"></label>
-      <label class="fld"><span>Часы сна</span><input type="number" step="0.25" inputmode="decimal" id="sh" value="${x.sleepH??''}" placeholder="—"></label>
+    </div>
+    <div class="small muted" style="margin:13px 0 6px">Сон</div>
+    <div class="sleep-row">
+      <label class="fld"><span>Лёг</span><input type="time" id="bd" value="${x.bed||''}"></label>
+      <label class="fld"><span>Встал</span><input type="time" id="rs" value="${x.rise||''}"></label>
+      <div class="sleep-out"><span class="small muted">Вышло</span>
+        <b id="shOut">${x.sleepH!=null?fmtH(x.sleepH):'—'}</b></div>
+    </div>
+    <div class="row small" style="margin-top:9px">
+      <button class="btn sm ghost" id="shMan">Ввести часы вручную</button>
+      ${x.bed||x.rise?'<button class="btn sm ghost" id="shClr">Сбросить</button>':''}
     </div>
   </div>
 
@@ -620,7 +651,37 @@ function bindDay(){
     const v=+b.dataset.v; x.slept=x.slept===v?0:v; save(); rDay()};
   $('#pl').onchange=e=>{x.pulse=+e.target.value||undefined;save()};
   $('#wt').onchange=e=>{x.weight=+e.target.value||undefined;save()};
-  $('#sh').onchange=e=>{x.sleepH=+e.target.value||undefined;save();rDay()};
+  /* Точечно обновляем итог, без rDay(): на десктопе стрелки в поле времени
+     шлют change на каждый шаг, и полная перерисовка выбивала бы фокус. */
+  const sleepIn=()=>{
+    x.bed=$('#bd').value||undefined; x.rise=$('#rs').value||undefined;
+    const h=hoursBetween(x.bed,x.rise);
+    if(h!=null) x.sleepH=h; else delete x.sleepH;   // пара распалась — итог не оставляем
+    const txt=x.sleepH!=null?fmtH(x.sleepH):'—';
+    $('#shOut').textContent=txt;
+    $('#sleepTot').textContent=x.sleepH!=null?txt:'';
+    save();
+  };
+  $('#bd').onchange=sleepIn; $('#rs').onchange=sleepIn;
+  $('#bd').onblur=()=>rDay(); $('#rs').onblur=()=>rDay();
+  const shc=$('#shClr'); if(shc)shc.onclick=()=>{
+    delete x.bed; delete x.rise; delete x.sleepH; save(); rDay()};
+  $('#shMan').onclick=()=>{
+    openSheet(`<h2>Часы сна</h2>
+      <div class="small muted" style="margin-bottom:9px">Если время отбоя неизвестно —
+      впишите продолжительность. Часы и минуты можно через точку: 7.5</div>
+      <label class="fld"><span>Часов</span>
+        <input type="number" step="0.25" inputmode="decimal" id="shv" value="${x.sleepH??''}" placeholder="—"></label>
+      <div class="row" style="margin-top:14px"><button class="btn" data-close style="flex:1">Отмена</button>
+      <button class="btn primary" id="shok" style="flex:1">Сохранить</button></div>`);
+    setTimeout(()=>$('#shv').focus(),80);
+    $('#shok').onclick=()=>{
+      const v=+$('#shv').value;
+      if(v>0){ x.sleepH=Math.round(v*100)/100; delete x.bed; delete x.rise }
+      else { delete x.sleepH }
+      save(); closeSheet(); rDay();
+    };
+  };
   $$('.sp').forEach(b=>b.onclick=()=>{
     x.supp=x.supp||[]; const nm=b.dataset.n;
     const i=x.supp.indexOf(nm); i<0?x.supp.push(nm):x.supp.splice(i,1);
@@ -814,18 +875,26 @@ function rStats(){
   $('#imJ').onclick=importJSON;
   $('#mkPub').onclick=makePublic;
   $('#cfg').onclick=syncSheet;
+  const hm=$('#hm');
+  if(hm){
+    const open=e=>{const b=e.target.closest('[data-d]');if(!b)return;
+      cur=b.dataset.d; go('day')};
+    hm.onclick=open;
+    hm.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open(e)}};
+  }
 }
 function heat(){
-  const cells=[]; const end=today();
+  const end=today();
   let start=addD(end,-83);
   const sd=pISO(start).getDay(); start=addD(start,-((sd+6)%7)); // с понедельника
   let d=start; const out=[];
   while(d<=end){
     const s=score(d), lvl=s>=8?4:s>=6?3:s>=4?2:s>=1?1:0;
-    out.push(`<i class="${lvl?'d'+lvl:''}${d===end?' today':''}" title="${fmtD(d)}: ${s}"></i>`);
+    out.push(`<i class="${lvl?'d'+lvl:''}${d===end?' today':''}${d===cur?' pick':''}" data-d="${d}" role="button" tabindex="0" title="${fmtD(d)}: ${s} — открыть"></i>`);
     d=addD(d,1);
   }
-  return `<div class="hm" style="grid-template-columns:repeat(${Math.ceil(out.length/7)},1fr);grid-auto-flow:column;grid-template-rows:repeat(7,1fr)">${out.join('')}</div>
+  return `<div class="small muted" style="margin-bottom:8px">Щёлкните по дню, чтобы открыть его</div>
+    <div class="hm hm-act" id="hm" style="grid-template-columns:repeat(${Math.ceil(out.length/7)},1fr);grid-auto-flow:column;grid-template-rows:repeat(7,1fr)">${out.join('')}</div>
     <div class="row small muted" style="margin-top:9px"><span>меньше</span>
     <span class="hm" style="display:inline-grid;grid-template-columns:repeat(5,12px);gap:3px;margin:0 8px">
     <i></i><i class="d1"></i><i class="d2"></i><i class="d3"></i><i class="d4"></i></span><span>больше</span></div>`;
@@ -846,7 +915,7 @@ function dl(name,txt,type){
   setTimeout(()=>URL.revokeObjectURL(a.href),1000); toast('Файл сохранён');
 }
 function exportCSV(){
-  const cols=['date','sleepH','slept','pulse','weight','sport','eng','books','exp','medit','social','post','will','sex','score','supp','note'];
+  const cols=['date','bed','rise','sleepH','slept','pulse','weight','sport','eng','books','exp','medit','social','post','will','sex','score','supp','note'];
   const rows=[cols.join(';')];
   sortedDays().forEach(d=>{
     const x=DB.days[d];
