@@ -127,7 +127,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .item h3{font-size:15px;margin-bottom:3px}
 .item .meta{font-size:12px;color:var(--ink-3)}
 .hm{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
-.hm i{aspect-ratio:1;border-radius:5px;background:var(--line-soft);display:block}
+.hm i{aspect-ratio:1;border-radius:5px;background:var(--line-soft);display:block;position:relative}
+/* рабочий день — точка в углу клетки */
+.hm i.wk::after{content:"";position:absolute;top:2px;right:2px;width:4px;height:4px;
+  border-radius:50%;background:color-mix(in srgb,var(--ink) 45%,transparent)}
 .hm i.d1{background:color-mix(in srgb,var(--accent) 26%,var(--surface-2))}
 .hm i.d2{background:color-mix(in srgb,var(--accent) 52%,var(--surface-2))}
 .hm i.d3{background:color-mix(in srgb,var(--accent) 78%,var(--surface-2))}
@@ -156,7 +159,21 @@ hr.sep{border:0;border-top:1px solid var(--line-soft);margin:14px 0}
 details summary{cursor:pointer;font-size:13px;color:var(--accent);padding:5px 0}
 code{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:5px;padding:1px 5px;font-size:12.5px}
 .tag{color:var(--accent);font-weight:500}
+/* бейдж рабочего дня в строке с датой: тап переключает, удержание — сброс */
+.wbadge{border:1px solid var(--line);background:var(--surface-2);border-radius:10px;
+  padding:6px 9px;font-size:13px;color:var(--ink-2);display:inline-flex;align-items:center;
+  gap:5px;transition:.15s;white-space:nowrap;flex:none;position:relative}
+.wbadge:hover{border-color:var(--ink-3)}
+.wbadge .lb{font-size:12px}
+.wbadge.work{background:color-mix(in srgb,var(--accent-2) 13%,var(--surface));
+  border-color:color-mix(in srgb,var(--accent-2) 42%,transparent);color:var(--accent-2);font-weight:600}
+/* точка-метка: день правили руками */
+.wbadge.man::after{content:"";position:absolute;top:3px;right:3px;width:4px;height:4px;
+  border-radius:50%;background:currentColor;opacity:.55}
+@media(max-width:420px){.wbadge .lb{display:none}.wbadge{padding:6px 8px}}
 .score-big{font-size:26px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;line-height:1}
+.agroup+.agroup{margin-top:13px}
+.ghd{font-size:11.5px;color:var(--ink-3);margin-bottom:6px;letter-spacing:.02em}
 .acts{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
 .act{border:1px solid var(--line);background:var(--surface-2);border-radius:12px;padding:10px 8px;
   text-align:center;transition:.15s;position:relative}
@@ -217,18 +234,76 @@ const hoursBetween=(bed,rise)=>{
   return Math.round(d/60*100)/100;
 };
 
-/* ---- активности, из которых складывается оценка дня ---- */
-const ACTS=[
- {k:'sport', ic:'🏋️', lb:'Спорт'},
- {k:'eng',   ic:'🇬🇧', lb:'Английский'},
- {k:'books', ic:'📚', lb:'Книги'},
- {k:'exp',   ic:'✨', lb:'Новый опыт'},
- {k:'medit', ic:'🧘', lb:'Медитация'},
- {k:'social',ic:'👥', lb:'Общение'},
- {k:'post',  ic:'📣', lb:'Посты'},
- {k:'will',  ic:'🔥', lb:'Воля', hint:'сделал через сопротивление'},
- {k:'sexn',  ic:'❤️', lb:'Секс'}
+/* ---- сменный график 2/2 ----
+   Якорь: 3 сентября 2026 — первый из двух рабочих, 5 и 6 выходные.
+   Цикл четырёхдневный, поэтому день считается на лету от якоря: ничего
+   не хранится, файл не растёт, история назад считается той же формулой.
+   Ручная правка перекрывает расчёт и живёт в дне как поле work:
+   1 — рабочий, 0 — выходной, отсутствует — как по графику. */
+const SHIFT_ANCHOR='2026-09-03', SHIFT_LEN=4, SHIFT_WORK=2;
+const DAYMS=86400000;
+/* Разница в днях. Считаем по UTC-полудню: летнее время не сдвинет результат. */
+const daysBetween=(a,b)=>{
+  const u=s=>{const[y,m,d]=s.split('-').map(Number);return Date.UTC(y,m-1,d,12)};
+  return Math.round((u(b)-u(a))/DAYMS);
+};
+/* по графику, без учёта ручных правок */
+const shiftWork=d=>((daysBetween(SHIFT_ANCHOR,d)%SHIFT_LEN)+SHIFT_LEN)%SHIFT_LEN<SHIFT_WORK;
+/* итог с учётом ручной пометки */
+const isWork=d=>{
+  const x=DB.days[d];
+  if(x&&x.work!=null) return !!x.work;
+  return shiftWork(d);
+};
+/* правил ли пользователь этот день руками */
+const workManual=d=>{const x=DB.days[d];return !!x&&x.work!=null};
+
+/* ---- активности, из которых складывается оценка дня ----
+   Разложены по разделам: на экране идут группами, в расчёте балла — плоским
+   списком. Спорт живёт в отдельной карточке выше, но в балл входит наравне. */
+const ACT_GROUPS=[
+ {g:'Английский', items:[
+   {k:'eng_duo', ic:'🦉', lb:'Duolingo'},
+   {k:'eng_ai',  ic:'🤖', lb:'AI-бот'},
+   {k:'eng_nat', ic:'🗣️', lb:'Носитель', hint:'общение с носителем языка'}]},
+ {g:'Знания', items:[
+   {k:'exp',    ic:'✨', lb:'Новый опыт'},
+   {k:'places', ic:'🗺️', lb:'Новые места'},
+   {k:'books',  ic:'📚', lb:'Книги'}]},
+ {g:'Духовность', items:[
+   {k:'will',  ic:'🔥', lb:'Воля', hint:'сделал через сопротивление'},
+   {k:'medit', ic:'🧘', lb:'Медитация'}]},
+ {g:'Общение', items:[
+   {k:'friends', ic:'👥', lb:'Друзья'},
+   {k:'people',  ic:'🙋', lb:'Новые люди'},
+   {k:'dating',  ic:'💐', lb:'Свидание'}]},
+ {g:'Прочее', items:[
+   {k:'post', ic:'📣', lb:'Посты'},
+   {k:'sexn', ic:'❤️', lb:'Секс'}]}
 ];
+const ACTS=[{k:'sport', ic:'🏋️', lb:'Спорт'}, ...ACT_GROUPS.flatMap(g=>g.items)];
+
+/* ---- переезд со старых кнопок на новые ----
+   Английский был счётчиком 0–3, теперь три отдельные кнопки: 1 балл — Duolingo,
+   2 — плюс AI-бот, 3 — плюс носитель. Общее «Общение» стало «Друзьями»,
+   а «Секс» из пометки +/− превратился в такой же счётчик, как остальные. */
+const ACTS_V=1;
+function migrateActs(){
+  if(DB.actsV>=ACTS_V) return;
+  for(const x of Object.values(DB.days||{})){
+    const e=+x.eng||0;
+    if(e>=1) x.eng_duo=1;
+    if(e>=2) x.eng_ai=1;
+    if(e>=3) x.eng_nat=1;
+    delete x.eng;
+    const s=+x.social||0;
+    if(s) x.friends=Math.min(s,3);
+    delete x.social;
+    if(x.sex&&x.sex!=='-') x.sexn=1;
+    delete x.sex;
+  }
+  DB.actsV=ACTS_V;
+}
 /* объединение и переименование добавок: итоговое имя -> варианты из таблицы */
 const SUPP_MERGE={
   'кофе':['кофе x2'],
@@ -333,7 +408,10 @@ function load(){
   let raw=null;
   try{raw=localStorage.getItem(LS)}catch(e){}
   if(raw){ try{DB=Object.assign(BLANK(),JSON.parse(raw));
-    if(DB.suppV!==SUPP_V){migrateSupps(); localStorage.setItem(LS,JSON.stringify(DB));}
+    const need = DB.suppV!==SUPP_V || !(DB.actsV>=ACTS_V);
+    if(DB.suppV!==SUPP_V) migrateSupps();
+    migrateActs();
+    if(need) localStorage.setItem(LS,JSON.stringify(DB));
   }catch(e){} }
   else { seedFromFile(); }
   try{const c=localStorage.getItem(LSC); if(c) CFG=Object.assign({...DEF_CFG},JSON.parse(c));}catch(e){}
@@ -346,7 +424,7 @@ function seedFromFile(){
     const s=JSON.parse(el.textContent);
     DB.days=s.days||{}; DB.notes=s.notes||{}; DB.supps=(s.suppDict||[]).map(n=>({id:uid(),name:n,slot:'day'}));
     DB.goals=flattenGoals(s.goals||{});
-    migrateSupps();
+    migrateSupps(); migrateActs();
     DB.updated=Date.now();
     localStorage.setItem(LS,JSON.stringify(DB));
   }catch(e){ console.warn('seed',e); }
@@ -419,10 +497,7 @@ function score(d){
   const x=DB.days[d]; if(!x) return 0;
   let s=0;
   for(const a of ACTS){
-    let v=0;
-    if(a.k==='sport') v=x.sport?1:0;
-    else if(a.k==='sexn') v=x.sex&&x.sex!=='-'?1:0;
-    else v=+x[a.k]||0;
+    const v = a.k==='sport' ? (x.sport?1:0) : (+x[a.k]||0);
     s+=v*(CFG.weights[a.k]??1);
   }
   return Math.round(s*10)/10;
@@ -516,6 +591,7 @@ async function pull(silent){
     if(j&&(j.updated||0)>(DB.updated||0)){
       DB=Object.assign(BLANK(),j);
       if(DB.suppV!==SUPP_V) migrateSupps();
+      migrateActs();
       localStorage.setItem(LS,JSON.stringify(DB)); render();
       if(!silent)toast('Загружено из облака');
     } else if(!silent) toast('Локальные данные не старее облачных');
@@ -566,7 +642,8 @@ function rDay(){
       <input type="date" id="dp" value="${cur}" max="${today()}" style="flex:1;text-align:center">
       <button class="btn sm" id="nx" ${isT?'disabled':''}>→</button>
       ${isT?'':'<button class="btn sm" id="tdy">Сегодня</button>'}
-      <div style="margin-left:6px;text-align:right">
+      ${workBadge(cur)}
+      <div style="margin-left:2px;text-align:right">
         <div class="score-big" id="scv">${sc}</div>
         <div class="small muted" style="line-height:1">балл</div>
       </div>
@@ -617,10 +694,14 @@ function rDay(){
 
   <div class="card">
     <h2>📊 Активности дня <span class="right">тап +1, удержание −1</span></h2>
-    <div class="acts" id="acts">${ACTS.filter(a=>a.k!=='sport').map(a=>{
-      const v = a.k==='sexn' ? (x.sex&&x.sex!=='-'?1:0) : (+x[a.k]||0);
-      return `<button class="act ${v?'on':''}" data-k="${a.k}"${a.hint?` title="${esc(a.hint)}"`:''}><span class="n">${v||''}</span>
-        <div class="ic">${a.ic}</div><div class="lb">${a.lb}</div></button>`}).join('')}</div>
+    <div id="acts">${ACT_GROUPS.map(g=>`
+      <div class="agroup">
+        <div class="ghd">${g.g}</div>
+        <div class="acts">${g.items.map(a=>{
+          const v=+x[a.k]||0;
+          return `<button class="act ${v?'on':''}" data-k="${a.k}"${a.hint?` title="${esc(a.hint)}"`:''}><span class="n">${v||''}</span>
+            <div class="ic">${a.ic}</div><div class="lb">${a.lb}</div></button>`}).join('')}</div>
+      </div>`).join('')}</div>
   </div>
 
   <div class="card">
@@ -629,6 +710,14 @@ function rDay(){
     <div class="small muted" style="margin-top:6px">Сохраняется автоматически</div>
   </div>`;
   bindDay();
+}
+/* Компактный бейдж рядом с датой: значок и короткая подпись.
+   Тап переключает, долгое нажатие возвращает день к графику. */
+function workBadge(d){
+  const w=isWork(d), man=workManual(d);
+  return `<button class="wbadge ${w?'work':''}${man?' man':''}" id="wkBtn"
+    title="${w?'Рабочий':'Выходной'} — ${man?'проставлено вручную, удержание вернёт к графику 2/2':'по графику 2/2'}. Нажмите, чтобы переключить">
+    ${w?'💼':'🌿'}<span class="lb">${w?'Раб':'Вых'}</span></button>`;
 }
 function suppChips(list){
   const all=DB.supps.map(s=>s.name);
@@ -647,6 +736,24 @@ function bindDay(){
   const n=$('#nx'); if(n)n.onclick=()=>{if(cur<today()){cur=addD(cur,1);render()}};
   const t=$('#tdy'); if(t)t.onclick=()=>{cur=today();render()};
   $('#dp').onchange=e=>{if(e.target.value){cur=e.target.value;render()}};
+  /* Тап переключает рабочий/выходной; если совпало с графиком, ручную пометку
+     убираем — день снова следует за сменами. Удержание сбрасывает к графику. */
+  const wb=$('#wkBtn'); let wHeld=false, wT=null;
+  wb.onclick=()=>{
+    if(wHeld){wHeld=false;return}
+    const v=!isWork(cur);
+    if(v===shiftWork(cur)) delete x.work; else x.work=v?1:0;
+    save(); rDay();
+  };
+  wb.addEventListener('pointerdown',()=>{
+    clearTimeout(wT); wHeld=false;
+    wT=setTimeout(()=>{
+      if(!workManual(cur)) return;
+      wHeld=true; if(navigator.vibrate)navigator.vibrate(15);
+      delete x.work; save(); rDay(); toast('Вернул по графику');
+    },450);
+  });
+  ['pointerup','pointerleave','pointercancel'].forEach(ev=>wb.addEventListener(ev,()=>clearTimeout(wT)));
   $('#sq').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;
     const v=+b.dataset.v; x.slept=x.slept===v?0:v; save(); rDay()};
   $('#pl').onchange=e=>{x.pulse=+e.target.value||undefined;save()};
@@ -699,8 +806,7 @@ function bindDay(){
     v?x.ex[i.dataset.n]=v:delete x.ex[i.dataset.n]; save();
   });
   const bump=(k,dir)=>{
-    if(k==='sexn'){ x.sex = (x.sex&&x.sex!=='-')?'-':'+'; }
-    else { x[k]=clamp((+x[k]||0)+dir,0,3); if(!x[k])delete x[k]; }
+    x[k]=clamp((+x[k]||0)+dir,0,3); if(!x[k])delete x[k];
     save(); rDay();
   };
   const A=$('#acts'); let held=false, ht=null;
@@ -829,8 +935,9 @@ function rStats(){
       pulse:avg(L.map(d=>DB.days[d].pulse).filter(Boolean)),
       weight:avg(L.map(d=>DB.days[d].weight).filter(Boolean)),
       sport:L.filter(d=>DB.days[d].sport).length,
-      eng:L.filter(d=>DB.days[d].eng).length,
-      social:L.filter(d=>DB.days[d].social).length
+      /* английский — любой из трёх способов за день */
+      eng:L.filter(d=>{const x=DB.days[d];return x.eng_duo||x.eng_ai||x.eng_nat}).length,
+      social:L.filter(d=>{const x=DB.days[d];return x.friends||x.people||x.dating}).length
     };
   };
   const w=per(7), m=per(30), y=per(365);
@@ -889,11 +996,12 @@ function heat(){
   const sd=pISO(start).getDay(); start=addD(start,-((sd+6)%7)); // с понедельника
   let d=start; const out=[];
   while(d<=end){
-    const s=score(d), lvl=s>=8?4:s>=6?3:s>=4?2:s>=1?1:0;
-    out.push(`<i class="${lvl?'d'+lvl:''}${d===end?' today':''}${d===cur?' pick':''}" data-d="${d}" role="button" tabindex="0" title="${fmtD(d)}: ${s} — открыть"></i>`);
+    const s=score(d), lvl=s>=8?4:s>=6?3:s>=4?2:s>=1?1:0, w=isWork(d);
+    out.push(`<i class="${lvl?'d'+lvl:''}${w?' wk':''}${d===end?' today':''}${d===cur?' pick':''}" data-d="${d}" role="button" tabindex="0" title="${fmtD(d)}: ${s}${w?', рабочий':''} — открыть"></i>`);
     d=addD(d,1);
   }
-  return `<div class="small muted" style="margin-bottom:8px">Щёлкните по дню, чтобы открыть его</div>
+  return `<div class="small muted" style="margin-bottom:8px">Щёлкните по дню, чтобы открыть его.
+    Точка в углу — рабочий день</div>
     <div class="hm hm-act" id="hm" style="grid-template-columns:repeat(${Math.ceil(out.length/7)},1fr);grid-auto-flow:column;grid-template-rows:repeat(7,1fr)">${out.join('')}</div>
     <div class="row small muted" style="margin-top:9px"><span>меньше</span>
     <span class="hm" style="display:inline-grid;grid-template-columns:repeat(5,12px);gap:3px;margin:0 8px">
@@ -915,12 +1023,14 @@ function dl(name,txt,type){
   setTimeout(()=>URL.revokeObjectURL(a.href),1000); toast('Файл сохранён');
 }
 function exportCSV(){
-  const cols=['date','bed','rise','sleepH','slept','pulse','weight','sport','eng','books','exp','medit','social','post','will','sex','score','supp','note'];
+  const cols=['date','work','bed','rise','sleepH','slept','pulse','weight',
+    ...ACTS.map(a=>a.k),'score','supp','note'];
   const rows=[cols.join(';')];
   sortedDays().forEach(d=>{
     const x=DB.days[d];
     rows.push(cols.map(c=>{
-      let v = c==='date'?d : c==='score'?score(d) : c==='supp'?(x.supp||[]).join(', ') : (x[c]??'');
+      let v = c==='date'?d : c==='work'?(isWork(d)?1:0) : c==='score'?score(d)
+            : c==='supp'?(x.supp||[]).join(', ') : (x[c]??'');
       v=String(v).replace(/"/g,'""');
       return /[;\n"]/.test(v)?`"${v}"`:v;
     }).join(';'));
@@ -972,7 +1082,10 @@ function importJSON(){
       const j=JSON.parse(r.result);
       if(!j.days)throw new Error('не тот формат');
       if(!confirm('Заменить текущие данные данными из файла?'))return;
-      DB=Object.assign(BLANK(),j);save();render();toast('Импортировано');
+      DB=Object.assign(BLANK(),j);
+      if(DB.suppV!==SUPP_V) migrateSupps();
+      migrateActs();
+      save();render();toast('Импортировано');
     }catch(e){toast('Ошибка: '+e.message)}};
     r.readAsText(f)};
   i.click();
