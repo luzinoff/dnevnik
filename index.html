@@ -691,10 +691,12 @@ function rDay(){
     <h2>😴 Тело <span class="right" id="sleepTot">${x.sleepH!=null?fmtH(x.sleepH):''}</span></h2>
     <div class="small muted" style="margin-bottom:6px">Оценка сна</div>
     <div class="rate" id="sq">${[1,2,3,4,5].map(i=>`<button data-v="${i}" class="${x.slept===i?'on':''}">${i}</button>`).join('')}</div>
-    <div class="grid2" style="margin-top:12px">
+    <div class="grid3" style="margin-top:12px">
       <label class="fld"><span>Пульс мин.</span><input type="number" inputmode="numeric" id="pl" value="${x.pulse??''}" placeholder="—"></label>
       <label class="fld"><span>Вес, кг</span><input type="number" step="0.1" inputmode="decimal" id="wt" value="${x.weight??''}" placeholder="—"></label>
+      <label class="fld"><span>Шаги</span><input type="number" inputmode="numeric" id="stp" value="${x.steps??''}" placeholder="—"></label>
     </div>
+    ${bandLine(x)}
     <div class="small muted" style="margin:13px 0 6px">Сон</div>
     <div class="sleep-row">
       <label class="fld"><span>Лёг</span><input type="time" id="bd" value="${x.bed||''}"></label>
@@ -750,6 +752,16 @@ function rDay(){
 }
 /* Компактный бейдж рядом с датой: значок и короткая подпись.
    Тап переключает, долгое нажатие возвращает день к графику. */
+/* строка с тем, что принёс браслет: показываем только если данные есть */
+function bandLine(x){
+  const p=[];
+  if(x.restHr!=null)     p.push(`пульс покоя <b>${x.restHr}</b>`);
+  if(x.sleepScore!=null) p.push(`оценка браслета <b>${x.sleepScore}</b>`);
+  if(x.deepMin!=null)    p.push(`глубокий <b>${fmtH(x.deepMin/60)}</b>`);
+  if(x.remMin!=null)     p.push(`быстрый <b>${fmtH(x.remMin/60)}</b>`);
+  if(!p.length) return '';
+  return `<div class="small muted" style="margin-top:9px">⌚ ${p.join(' · ')}</div>`;
+}
 function workBadge(d){
   const w=isWork(d), man=workManual(d);
   return `<button class="wbadge ${w?'work':''}${man?' man':''}" id="wkBtn"
@@ -795,6 +807,7 @@ function bindDay(){
     const v=+b.dataset.v; x.slept=x.slept===v?0:v; save(); rDay()};
   $('#pl').onchange=e=>{x.pulse=+e.target.value||undefined;save()};
   $('#wt').onchange=e=>{x.weight=+e.target.value||undefined;save()};
+  $('#stp').onchange=e=>{x.steps=+e.target.value||undefined;save()};
   /* Точечно обновляем итог, без rDay(): на десктопе стрелки в поле времени
      шлют change на каждый шаг, и полная перерисовка выбивала бы фокус. */
   const sleepIn=()=>{
@@ -971,6 +984,10 @@ function rStats(){
       slept:avg(L.map(d=>DB.days[d].slept).filter(Boolean)),
       pulse:avg(L.map(d=>DB.days[d].pulse).filter(Boolean)),
       weight:avg(L.map(d=>DB.days[d].weight).filter(Boolean)),
+      rest:avg(L.map(d=>DB.days[d].restHr).filter(Boolean)),
+      steps:avg(L.map(d=>DB.days[d].steps).filter(Boolean)),
+      sscore:avg(L.map(d=>DB.days[d].sleepScore).filter(Boolean)),
+      deep:avg(L.map(d=>DB.days[d].deepMin).filter(Boolean)),
       sport:L.filter(d=>DB.days[d].sport).length,
       /* английский — любой из трёх способов за день */
       eng:L.filter(d=>{const x=DB.days[d];return x.eng_duo||x.eng_ai||x.eng_nat}).length,
@@ -990,9 +1007,13 @@ function rStats(){
         <td></td><td style="text-align:right">7 дн</td><td style="text-align:right">30 дн</td><td style="text-align:right">год</td></tr>
       ${row('Балл дня',x=>r1(x.score))}
       ${row('Сон, ч',x=>r1(x.sleep))}
+      ${row('Глубокий, мин',x=>x.deep==null?'—':Math.round(x.deep))}
       ${row('Оценка сна',x=>r1(x.slept))}
-      ${row('Пульс',x=>r1(x.pulse))}
+      ${row('Балл браслета',x=>x.sscore==null?'—':Math.round(x.sscore))}
+      ${row('Пульс мин.',x=>r1(x.pulse))}
+      ${row('Пульс покоя',x=>r1(x.rest))}
       ${row('Вес, кг',x=>r1(x.weight))}
+      ${row('Шаги',x=>x.steps==null?'—':Math.round(x.steps).toLocaleString('ru'))}
       ${row('Тренировки',x=>x.sport)}
       ${row('Английский',x=>x.eng)}
       ${row('Общение',x=>x.social)}
@@ -1009,6 +1030,7 @@ function rStats(){
       <button class="btn sm" id="exJ">Экспорт JSON</button>
       <button class="btn sm" id="exC">Экспорт CSV</button>
       <button class="btn sm" id="imJ">Импорт JSON</button>
+      <button class="btn sm" id="imB">Импорт браслета</button>
       <button class="btn sm" id="mkPub">Файл для публикации</button>
       <button class="btn sm" id="cfg">Синхронизация</button>
     </div>
@@ -1017,6 +1039,7 @@ function rStats(){
   $('#exJ').onclick=()=>dl('dnevnik-'+today()+'.json',JSON.stringify(DB),'application/json');
   $('#exC').onclick=exportCSV;
   $('#imJ').onclick=importJSON;
+  $('#imB').onclick=importBand;
   $('#mkPub').onclick=makePublic;
   $('#cfg').onclick=syncSheet;
   const hm=$('#hm');
@@ -1060,8 +1083,8 @@ function dl(name,txt,type){
   setTimeout(()=>URL.revokeObjectURL(a.href),1000); toast('Файл сохранён');
 }
 function exportCSV(){
-  const cols=['date','work','bed','rise','sleepH','slept','pulse','weight',
-    ...ACTS.map(a=>a.k),'score','supp','note'];
+  const cols=['date','work','bed','rise','sleepH','slept','sleepScore','deepMin','remMin',
+    'pulse','restHr','weight','steps',...ACTS.map(a=>a.k),'score','supp','note'];
   const rows=[cols.join(';')];
   sortedDays().forEach(d=>{
     const x=DB.days[d];
@@ -1110,6 +1133,105 @@ function makePublic(){
       <div class="row" style="margin-top:14px"><span class="spacer"></span>
       <button class="btn primary" data-close>Понятно</button></div>`);
   }catch(e){ toast('Не получилось: '+e.message) }
+}
+/* ================= ИМПОРТ ДАННЫХ С БРАСЛЕТА =================
+   Выгрузка Zepp Life, разобранная на четыре CSV: сон, пульс, шаги, тренировки.
+   Тип файла определяем по заголовку, а не по имени — файлы можно переименовать. */
+function parseCSV(txt){
+  const t=txt.replace(/^﻿/,'');
+  const rows=[]; let row=[], f='', q=false;
+  for(let i=0;i<t.length;i++){
+    const c=t[i];
+    if(q){
+      if(c==='"'){ if(t[i+1]==='"'){f+='"';i++} else q=false }
+      else f+=c;
+    }
+    else if(c==='"') q=true;
+    else if(c===','){ row.push(f); f='' }
+    else if(c==='\n'){ row.push(f); f=''; rows.push(row); row=[] }
+    else if(c!=='\r') f+=c;
+  }
+  if(f||row.length){ row.push(f); rows.push(row) }
+  if(!rows.length) return [];
+  const head=rows.shift().map(h=>h.trim());
+  return rows.filter(r=>r.length>1).map(r=>Object.fromEntries(head.map((h,i)=>[h,(r[i]??'').trim()])));
+}
+/* «6,12» и «6.12» — оба варианта встречаются в выгрузке */
+const num=v=>{const n=parseFloat(String(v??'').replace(',','.'));return isFinite(n)?n:null};
+const isDate=s=>/^\d{4}-\d{2}-\d{2}$/.test(s||'');
+/* «01:13:00» → «01:13»; секунды в дневнике не нужны */
+const hhmm=s=>{const m=/^(\d{1,2}):(\d{2})/.exec(String(s||'').trim());return m?pad(+m[1])+':'+m[2]:null};
+
+function bandRows(rows){
+  const h=Object.keys(rows[0]||{});
+  if(h.includes('total_duration_min')) return 'sleep';
+  if(h.includes('resting_hr')) return 'hr';
+  if(h.includes('steps')) return 'steps';
+  if(h.includes('sport_type')||h.includes('type')) return 'workout';
+  return null;
+}
+/* Сводит выгрузку в дневник. Данные прибора считаем точнее ручных,
+   поэтому перезаписываем; счётчик ведём отдельно, чтобы показать в отчёте. */
+function mergeBand(kind,rows,st){
+  for(const r of rows){
+    const d=r.date;
+    if(!isDate(d)) continue;
+    /* дни из будущего игнорируем: в выгрузке попадаются пустые хвосты */
+    if(d>today()) continue;
+    const x=DB.days[d]=DB.days[d]||{};
+    let touched=false;
+    const set=(k,v)=>{
+      if(v==null||v==='') return;
+      if(x[k]!==v){ x[k]=v; touched=true }
+    };
+    if(kind==='sleep'){
+      const mn=num(r.total_duration_min);
+      if(mn>0) set('sleepH',Math.round(mn/60*100)/100);
+      set('bed',hhmm(r.bedtime_local)); set('rise',hhmm(r.wakeup_local));
+      const sc=num(r.sleep_score); if(sc>0) set('sleepScore',Math.round(sc));
+      const dp=num(r.deep_min); if(dp>0) set('deepMin',Math.round(dp));
+      const rm=num(r.rem_min);  if(rm>0) set('remMin',Math.round(rm));
+    }
+    else if(kind==='hr'){
+      /* «Пульс мин.» вёлся вручную как минимальный за сутки — это min_hr.
+         Пульс покоя браслет считает отдельно, кладём его своим полем. */
+      const mn=num(r.min_hr);     if(mn>0) set('pulse',Math.round(mn));
+      const rs=num(r.resting_hr); if(rs>0) set('restHr',Math.round(rs));
+    }
+    else if(kind==='steps'){
+      const s=num(r.steps); if(s>0) set('steps',Math.round(s));
+    }
+    if(touched) st.days.add(d);
+  }
+}
+function importBand(){
+  const i=document.createElement('input');
+  i.type='file'; i.accept='.csv,text/csv'; i.multiple=true;
+  i.onchange=async()=>{
+    const files=[...i.files]; if(!files.length) return;
+    const st={days:new Set(), files:[], skipped:[]};
+    for(const f of files){
+      try{
+        const rows=parseCSV(await f.text());
+        const kind=rows.length?bandRows(rows):null;
+        if(!kind||kind==='workout'){ st.skipped.push(f.name+(kind==='workout'?' (тренировки пока не переносим)':' (не распознан)')); continue }
+        mergeBand(kind,rows,st);
+        st.files.push(`${f.name} — ${({sleep:'сон',hr:'пульс',steps:'шаги'})[kind]}, ${rows.length} строк`);
+      }catch(e){ st.skipped.push(f.name+' — ошибка чтения') }
+    }
+    if(st.days.size){ migrateActs(); save(); render() }
+    openSheet(`<h2>Импорт с браслета</h2>
+      <div class="small" style="color:var(--ink-2);line-height:1.7">
+      ${st.files.length?`Обработано:<br>${st.files.map(esc).join('<br>')}<br><br>`:''}
+      Обновлено дней: <b>${st.days.size}</b>.
+      ${st.skipped.length?`<br><br>Пропущено:<br>${st.skipped.map(esc).join('<br>')}`:''}
+      ${st.days.size?`<br><br>Сон, пульс, шаги и оценка сна взяты из выгрузки — они точнее записанных по памяти.
+      «Пульс мин.» — минимальный за сутки, как вы и вели; пульс покоя лежит отдельным полем.`:''}
+      </div>
+      <div class="row" style="margin-top:14px"><span class="spacer"></span>
+      <button class="btn primary" data-close>Готово</button></div>`);
+  };
+  i.click();
 }
 function importJSON(){
   const i=document.createElement('input');i.type='file';i.accept='.json';
