@@ -4,6 +4,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f7f6f3">
 <title>Дневник</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Дневник">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link id="fav" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%235b7f6e'/%3E%3Crect%20x='15'%20y='13'%20width='7'%20height='38'%20rx='3.5'%20fill='%2341604f'/%3E%3Crect%20x='20'%20y='13'%20width='29'%20height='38'%20rx='3'%20fill='%23f7f6f3'/%3E%3Cpath%20d='M38%2013h7v20l-3.5-3.5L38%2033z'%20fill='%23b4713f'/%3E%3Crect%20x='25'%20y='39'%20width='19'%20height='2.6'%20rx='1.3'%20fill='%23c9d3cd'/%3E%3Crect%20x='25'%20y='44.5'%20width='12'%20height='2.6'%20rx='1.3'%20fill='%23c9d3cd'/%3E%3C/svg%3E">
 <style>
 :root{
   color-scheme: light;
@@ -872,6 +876,9 @@ function makePublic(){
     const sb=doc.querySelector('#sub'); if(sb) sb.textContent='';
     const ts=doc.querySelector('#toast'); if(ts){ts.textContent='';ts.classList.remove('on')}
     const sd=doc.querySelector('#syncDot'); if(sd){sd.className='sync-dot';sd.title='Синхронизация'}
+    /* PNG-иконки нарисованы канвасом при загрузке — в копии они лишний вес,
+       на опубликованной странице создадутся заново */
+    doc.querySelectorAll('link[data-gen]').forEach(e=>e.remove());
     doc.removeAttribute('data-theme');
     const clean='<!DOCTYPE html>\n'+doc.outerHTML;
     dl('Дневник-публичный.html',clean,'text/html;charset=utf-8');
@@ -1003,6 +1010,37 @@ function rNotes(){
       DB.notes[nsec]=DB.notes[nsec]||[];DB.notes[nsec].unshift(t);save();closeSheet();rNotes()};
   };
 }
+
+/* ================= ИКОНКА ДЛЯ ГЛАВНОГО ЭКРАНА =================
+   SVG-фавикон уже в <head>, но iOS его не берёт для ярлыка, а Chrome
+   предпочитает растр. Рисуем PNG прямо здесь — файл остаётся один.
+   Пометка data-gen: makePublic() выкидывает эти теги из копии,
+   на публикуемой странице они создадутся заново при открытии. */
+function makeIcon(px){
+  const c=document.createElement('canvas'); c.width=c.height=px;
+  const g=c.getContext('2d'), u=px/64, R=(x,y,w,h,r,f)=>{
+    g.fillStyle=f; g.beginPath(); g.roundRect(x*u,y*u,w*u,h*u,r*u); g.fill();
+  };
+  R(0,0,64,64,14,'#5b7f6e');            /* фон-плашка */
+  R(15,13,7,38,3.5,'#41604f');          /* корешок */
+  R(20,13,29,38,3,'#f7f6f3');           /* страница */
+  g.fillStyle='#b4713f';                /* закладка */
+  g.beginPath(); g.moveTo(38*u,13*u); g.lineTo(45*u,13*u); g.lineTo(45*u,33*u);
+  g.lineTo(41.5*u,29.5*u); g.lineTo(38*u,33*u); g.closePath(); g.fill();
+  R(25,39,19,2.6,1.3,'#c9d3cd');        /* строки текста */
+  R(25,44.5,12,2.6,1.3,'#c9d3cd');
+  return c.toDataURL('image/png');
+}
+try{
+  if(document.createElement('canvas').getContext('2d').roundRect){
+    [['apple-touch-icon',180],['icon',192]].forEach(([rel,px])=>{
+      const l=document.createElement('link');
+      l.rel=rel; l.type='image/png'; l.sizes=px+'x'+px;
+      l.href=makeIcon(px); l.dataset.gen='1';
+      document.head.appendChild(l);
+    });
+  }
+}catch(e){/* старый браузер — обойдётся SVG-иконкой */}
 
 /* ================= СТАРТ ================= */
 load(); applyTheme(); render();
