@@ -1028,14 +1028,19 @@ function rGoals(){
     <button class="btn sm" id="gAdd" style="margin-top:11px">+ Новая цель</button>
   </div>
   ${g.length?g.map(x=>`
-    <button class="pill gtg ${x.done?'on':''}" data-id="${x.id}" style="margin-bottom:7px">
+    <div class="row" style="margin-bottom:7px;gap:4px">
+    <button class="pill gtg ${x.done?'on':''}" data-id="${x.id}" style="flex:1;margin:0">
       <span class="box"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg></span>
       <span class="nm" style="${x.done?'opacity:.55;text-decoration:line-through':''}">${esc(x.text)}
         ${gfilter==='all'?`<span class="tm" style="display:block">${(SCOPES.find(s=>s[0]===x.scope)||[,''])[1]}</span>`:''}</span>
-    </button>`).join(''):'<div class="empty">Целей нет</div>'}`;
+    </button>
+    <button class="btn ghost ged" data-id="${x.id}" title="Изменить" style="flex:none">✎</button>
+    </div>`).join(''):'<div class="empty">Целей нет</div>'}
+  ${g.length?'<div class="small muted" style="margin:2px 2px 0">Тап — отметить, ✎ — правка и перенос в другой раздел</div>':''}`;
   $$('.gf').forEach(b=>b.onclick=()=>{gfilter=b.dataset.s;rGoals()});
   $$('.gtg').forEach(b=>b.onclick=()=>{
     const x=DB.goals.find(y=>y.id===b.dataset.id); x.done=!x.done; save(); rGoals()});
+  $$('.ged').forEach(b=>b.onclick=()=>editGoal(b.dataset.id));
   $('#gAdd').onclick=()=>{
     openSheet(`<h2>Новая цель</h2>
       <label class="fld" style="margin-bottom:12px"><span>Текст</span><input type="text" id="gt"></label>
@@ -1046,6 +1051,32 @@ function rGoals(){
     $('#gok').onclick=()=>{const t=$('#gt').value.trim();if(!t)return toast('Пусто');
       DB.goals.unshift({id:uid(),text:t,scope:$('#gs').value,done:false,created:today()});
       save();closeSheet();rGoals()};
+  };
+}
+/* Правка цели: текст и раздел в одном окне, там же удаление.
+   Смена раздела — просто новое значение scope, порядок в списке не трогаем. */
+function editGoal(id){
+  const x=DB.goals.find(y=>y.id===id); if(!x) return;
+  openSheet(`<h2>Цель</h2>
+    <label class="fld" style="margin-bottom:12px"><span>Текст</span>
+      <input type="text" id="gt" value="${esc(x.text)}"></label>
+    <label class="fld" style="margin-bottom:16px"><span>Раздел</span>
+      <select id="gs">${SCOPES.map(([k,n])=>
+        `<option value="${k}"${k===x.scope?' selected':''}>${n}</option>`).join('')}</select></label>
+    <div class="row"><button class="btn danger" id="gdel">Удалить</button>
+      <span class="spacer"></span>
+      <button class="btn" data-close>Отмена</button>
+      <button class="btn primary" id="gok">Сохранить</button></div>`);
+  $('#gdel').onclick=()=>{
+    if(!confirm('Удалить цель?'))return;
+    DB.goals=DB.goals.filter(y=>y.id!==id); save(); closeSheet(); rGoals();
+  };
+  $('#gok').onclick=()=>{
+    const t=$('#gt').value.trim(); if(!t) return toast('Пусто');
+    const to=$('#gs').value, moved = to!==x.scope;
+    x.text=t; x.scope=to;
+    save(); closeSheet(); rGoals();
+    if(moved) toast('Перенесено в «'+SCOPES.find(s=>s[0]===to)[1]+'»');
   };
 }
 
