@@ -470,7 +470,7 @@ const DEF_CFG={theme:'light',clientId:'',fileId:'',everSignedIn:false,lastSync:0
 
 const BLANK=()=>({days:{},goals:[],notes:{},supps:[],updated:0});
 let DB=BLANK(), CFG={...DEF_CFG}, cur=today(), tab='day';
-let dq='', gfilter='all', nsec='wish';
+let dq='', gfilter='all', nsec='wins';
 /* «Ж» скрыт: открывается тремя тапами по заголовку «Заметки», закрывается при уходе с вкладки */
 const HIDDEN_SEC='zh_list';
 let zhOpen=false, zhTaps=0, zhT=null;
@@ -555,21 +555,40 @@ function flattenGoals(g){
 /* ---- разбор «Глобальных» на разделы ----
    Список был одной простыней с заголовками-строками вида «Бизнес:».
    Заголовок задаёт раздел для всего, что идёт следом, и сам из списка убирается. */
-const GOALS_V=1;
+const GOALS_V=2;
 const GOAL_SECT=[[/^бизнес:?$/i,'biz'],[/^самооценка:?$/i,'self'],
   [/^изменения\s*\/\s*развитие:?$/i,'grow'],[/^общение:?$/i,'talk']];
+/* эти четыре раздела — не цели, а мысли: их место в Заметках */
+const TO_NOTES=['biz','self','grow','talk'];
 function migrateGoals(){
   if(DB.goalsV>=GOALS_V) return;
-  const out=[]; let sc=null;
-  for(const g of DB.goals||[]){
-    if(g.scope!=='life'){ out.push(g); sc=null; continue }
-    const t=String(g.text||'').trim();
-    const hit=GOAL_SECT.find(([re])=>re.test(t));
-    if(hit){ sc=hit[1]; continue }          // заголовок в список не переносим
-    if(sc) g.scope=sc;
-    out.push(g);
+  if(!(DB.goalsV>=1)){
+    const out=[]; let sc=null;
+    for(const g of DB.goals||[]){
+      if(g.scope!=='life'){ out.push(g); sc=null; continue }
+      const t=String(g.text||'').trim();
+      const hit=GOAL_SECT.find(([re])=>re.test(t));
+      if(hit){ sc=hit[1]; continue }        // заголовок в список не переносим
+      if(sc) g.scope=sc;
+      out.push(g);
+    }
+    DB.goals=out;
   }
-  DB.goals=out;
+  /* v2: разделы-мысли уезжают в Заметки, «100 хочу» — наоборот, в Цели */
+  DB.notes=DB.notes||{};
+  const keep=[];
+  for(const g of DB.goals||[]){
+    if(TO_NOTES.includes(g.scope)){
+      const l=DB.notes[g.scope]=DB.notes[g.scope]||[];
+      if(!l.includes(g.text)) l.push(g.text);
+    } else keep.push(g);
+  }
+  DB.goals=keep;
+  for(const t of DB.notes.wish||[]){
+    if(!DB.goals.some(g=>g.scope==='wish'&&g.text===t))
+      DB.goals.push({id:uid(),text:t,scope:'wish',done:false,created:today()});
+  }
+  delete DB.notes.wish;
   DB.goalsV=GOALS_V;
 }
 function save(push=true){
@@ -711,7 +730,7 @@ const TABS=[
 $('#tabbar').innerHTML=TABS.map(t=>`<button class="tab${t.id==='day'?' on':''}" data-tab="${t.id}"><svg viewBox="0 0 24 24">${t.icon}</svg>${t.name}</button>`).join('');
 $('#tabbar').onclick=e=>{const b=e.target.closest('[data-tab]');if(b)go(b.dataset.tab)};
 function go(id){
-  if(tab==='notes'&&id!=='notes'){zhOpen=false;zhTaps=0;if(nsec===HIDDEN_SEC)nsec='wish'}
+  if(tab==='notes'&&id!=='notes'){zhOpen=false;zhTaps=0;if(nsec===HIDDEN_SEC)nsec='wins'}
   tab=id;$$('.tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
   $$('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+id));window.scrollTo({top:0});render()}
 function render(){
@@ -992,8 +1011,7 @@ const hl=t=>esc(t).replace(/#([\wа-яёА-ЯЁ-]+)/g,'<span class="tag">#$1</sp
 
 /* ================= ЦЕЛИ ================= */
 const SCOPES=[['month','Месяц'],['year','2026'],['phuket','Пхукет'],['regular','Регулярные'],
-  ['life','Глобальные'],['biz','Бизнес'],['self','Самооценка'],
-  ['grow','Изменения / развитие'],['talk','Общение']];
+  ['life','Глобальные'],['wish','100 хочу']];
 function rGoals(){
   const g=DB.goals.filter(x=>gfilter==='all'||x.scope===gfilter);
   const done=g.filter(x=>x.done).length;
@@ -1432,11 +1450,13 @@ function hintAuth(msg){
 }
 
 /* ================= ЗАМЕТКИ ================= */
-const NSEC=[['wish','100 хочу'],['wins','Победы'],['books','Книги'],['insights','Инсайты'],['zh_list','Ж'],['free','Свои']];
+const NSEC=[['wins','Победы'],['books','Книги'],['insights','Инсайты'],
+  ['biz','Бизнес'],['self','Самооценка'],['grow','Изменения'],['talk','Общение'],
+  ['zh_list','Ж'],['free','Свои']];
 
 function rNotes(){
   DB.notes.free=DB.notes.free||[];
-  if(nsec===HIDDEN_SEC&&!zhOpen) nsec='wish';
+  if(nsec===HIDDEN_SEC&&!zhOpen) nsec='wins';
   const list=DB.notes[nsec]||[];
   const secs=NSEC.filter(([k])=>k!==HIDDEN_SEC||zhOpen);
   $('#v-notes').innerHTML=`
@@ -1448,8 +1468,9 @@ function rNotes(){
     ${zhOpen?'<span class="spacer"></span><button class="btn sm ghost" id="nLock">Скрыть</button>':''}</div></div>
   ${list.length?`<div class="card">${list.map((t,i)=>
     `<div class="row" style="align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line-soft)">
-      <span style="flex:1">${hl(t)}</span>
-      <button class="btn ghost nd" data-i="${i}">✕</button></div>`).join('')}</div>`
+      <span class="nedit" data-i="${i}" style="flex:1;cursor:pointer">${hl(t)}</span>
+      <button class="btn ghost nd" data-i="${i}" title="Удалить">✕</button></div>`).join('')}</div>
+    <div class="small muted" style="margin:9px 2px 0">Тап по заметке — правка и перенос в другой раздел</div>`
     :'<div class="empty">Пусто</div>'}`;
   $$('.ns').forEach(b=>b.onclick=()=>{nsec=b.dataset.s;rNotes()});
   /* три быстрых тапа по слову «Заметки» открывают скрытый раздел */
@@ -1459,10 +1480,11 @@ function rNotes(){
     if(zhTaps>=3){ zhTaps=0; zhOpen=true; nsec=HIDDEN_SEC;
       if(navigator.vibrate)navigator.vibrate(20); rNotes(); }
   };
-  const lk=$('#nLock'); if(lk)lk.onclick=()=>{zhOpen=false;nsec='wish';rNotes()};
+  const lk=$('#nLock'); if(lk)lk.onclick=()=>{zhOpen=false;nsec='wins';rNotes()};
   $$('.nd').forEach(b=>b.onclick=()=>{
     if(!confirm('Удалить?'))return;
     DB.notes[nsec].splice(+b.dataset.i,1);save();rNotes()});
+  $$('.nedit').forEach(b=>b.onclick=()=>editNote(+b.dataset.i));
   $('#nAdd').onclick=()=>{
     openSheet(`<h2>Заметка · ${NSEC.find(s=>s[0]===nsec)[1]}</h2>
       <textarea id="ntx" placeholder="Текст"></textarea>
@@ -1471,6 +1493,37 @@ function rNotes(){
     setTimeout(()=>$('#ntx').focus(),80);
     $('#nok').onclick=()=>{const t=$('#ntx').value.trim();if(!t)return toast('Пусто');
       DB.notes[nsec]=DB.notes[nsec]||[];DB.notes[nsec].unshift(t);save();closeSheet();rNotes()};
+  };
+}
+/* Правка заметки: текст и раздел в одном окне. Смена раздела —
+   это перенос: запись уходит из текущего списка в начало выбранного. */
+function editNote(i){
+  const from=nsec, cur=(DB.notes[from]||[])[i];
+  if(cur==null) return;
+  const secs=NSEC.filter(([k])=>k!==HIDDEN_SEC||zhOpen);
+  openSheet(`<h2>Заметка</h2>
+    <textarea id="ntx" style="margin-bottom:12px">${esc(cur)}</textarea>
+    <label class="fld" style="margin-bottom:16px"><span>Раздел</span>
+      <select id="nsl">${secs.map(([k,n])=>
+        `<option value="${k}"${k===from?' selected':''}>${n}</option>`).join('')}</select></label>
+    <div class="row"><button class="btn danger" id="ndel">Удалить</button>
+      <span class="spacer"></span>
+      <button class="btn" data-close>Отмена</button>
+      <button class="btn primary" id="nok">Сохранить</button></div>`);
+  $('#ndel').onclick=()=>{
+    if(!confirm('Удалить?'))return;
+    DB.notes[from].splice(i,1); save(); closeSheet(); rNotes();
+  };
+  $('#nok').onclick=()=>{
+    const t=$('#ntx').value.trim(); if(!t) return toast('Пусто');
+    const to=$('#nsl').value;
+    if(to===from) DB.notes[from][i]=t;
+    else{
+      DB.notes[from].splice(i,1);
+      DB.notes[to]=DB.notes[to]||[]; DB.notes[to].unshift(t);
+    }
+    save(); closeSheet(); rNotes();
+    if(to!==from) toast('Перенесено в «'+NSEC.find(s=>s[0]===to)[1]+'»');
   };
 }
 
