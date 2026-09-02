@@ -689,8 +689,8 @@ function render(){
 }
 
 /* ================= ДЕНЬ ================= */
-const EXS=[['Растяжка',''],['Кардио','напр. 3000 или «шаги»'],['Подтягивания','20/15'],
-           ['Отжимания','брусья / 50'],['Бицепс',''],['Приседания',''],['Пресс','30 / планка 2'],
+const EXS=[['Растяжка',''],['Кардио',''],['Подтягивания',''],
+           ['Отжимания',''],['Бицепс',''],['Приседания',''],['Пресс',''],
            ['Прочее','']];
 
 function rDay(){
@@ -874,7 +874,7 @@ function bindDay(){
   const rep=$('#rep'); if(rep)rep.onclick=()=>{x.supp=[...(DB.days[prevDayWith('supp')].supp||[])];save();rDay()};
   const clr=$('#spClr'); if(clr)clr.onclick=()=>{x.supp=[];save();rDay()};
   $('#spt').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;
-    x.sport=+b.dataset.v; if(!x.sport)delete x.ex; save(); rDay()};
+    x.sport=+b.dataset.v; if(!x.sport){delete x.ex; delete x.exBand} save(); rDay()};
   $$('.exi').forEach(i=>i.onchange=()=>{
     x.ex=x.ex||{}; const v=i.value.trim();
     v?x.ex[i.dataset.n]=v:delete x.ex[i.dataset.n]; save();
@@ -1188,11 +1188,71 @@ const hhmm=s=>{const m=/^(\d{1,2}):(\d{2})/.exec(String(s||'').trim());return m?
 
 function bandRows(rows){
   const h=Object.keys(rows[0]||{});
+  /* тренировки проверяем первыми: там тоже есть колонка steps */
+  if(h.includes('activity')||h.includes('sport_type')) return 'workout';
   if(h.includes('total_duration_min')) return 'sleep';
   if(h.includes('resting_hr')) return 'hr';
   if(h.includes('steps')) return 'steps';
-  if(h.includes('sport_type')||h.includes('type')) return 'workout';
   return null;
+}
+/* ---- тренировки с браслета ----
+   Прибор знает только тип занятия, разбивки по подходам в выгрузке нет.
+   Бег и ходьба идут в «Кардио» с километражем, велосипед — туда же одним
+   словом, остальное (силовая, плавание, единоборства) — в «Прочее».
+   [поле, как назвать, писать ли километры] */
+const WK_MAP={
+  outdoor_running:['Кардио','бег',1],      indoor_running:['Кардио','бег на дорожке',1],
+  outdoor_walking:['Кардио','ходьба',1],   indoor_walking:['Кардио','ходьба',1],
+  outdoor_hiking:['Кардио','поход',1],
+  outdoor_riding:['Кардио','велосипед',0], indoor_riding:['Кардио','велотренажёр',0],
+  strength_training:['Прочее','силовая',0],free_training:['Прочее','силовая',0],
+  pool_swimming:['Прочее','плавание',0],   open_water_swimming:['Прочее','плавание',0],
+  muay_thai:['Прочее','муай-тай',0],       boxing:['Прочее','бокс',0],
+  parallel_skiing:['Прочее','лыжи',0],     yoga:['Прочее','йога',0],
+  elliptical:['Прочее','эллипс',0],        rowing:['Прочее','гребля',0],
+  jump_rope:['Прочее','скакалка',0]
+};
+const kmTxt=v=>String(Math.round(v*10)/10).replace('.',',');
+/* Вставка от браслета помечается в x.exBand, чтобы повторный импорт
+   заменял её, а не плодил дубли рядом с вашим текстом. */
+function applyBand(x,field,txt){
+  const prev=(x.exBand||{})[field];
+  const cur=String((x.ex||{})[field]||'').trim();
+  const parts=cur?cur.split(' · ').filter(p=>p&&p!==prev):[];
+  if(txt&&!parts.includes(txt)) parts.push(txt);
+  x.ex=x.ex||{};
+  if(parts.length) x.ex[field]=parts.join(' · '); else delete x.ex[field];
+  if(txt){ x.exBand=x.exBand||{}; x.exBand[field]=txt }
+  else if(x.exBand){ delete x.exBand[field]; if(!Object.keys(x.exBand).length) delete x.exBand }
+}
+function mergeWorkouts(rows,st){
+  /* за день бывает несколько занятий — сначала собираем, потом пишем */
+  const byDay={};
+  for(const r of rows){
+    const d=r.date;
+    if(!isDate(d)||d>today()) continue;
+    const a=String(r.activity||r.sport_type||'').trim();
+    const m=WK_MAP[a];
+    /* незнакомый тип не выбрасываем: пишем как есть в «Прочее» */
+    const[field,lb,wantKm]=m||['Прочее',a.replace(/_/g,' '),0];
+    if(!lb) continue;
+    const g=byDay[d]=byDay[d]||{};
+    const e=g[field+'|'+lb]=g[field+'|'+lb]||{field,lb,wantKm,km:0,n:0};
+    e.n++;
+    const km=num(r.distance_km); if(km>0) e.km+=km;
+  }
+  for(const[d,g]of Object.entries(byDay)){
+    const x=DB.days[d]=DB.days[d]||{};
+    const byField={};
+    for(const e of Object.values(g)){
+      const txt = e.wantKm&&e.km>0 ? `${e.lb} ${kmTxt(e.km)} км`
+                : e.n>1 ? `${e.lb} ×${e.n}` : e.lb;
+      (byField[e.field]=byField[e.field]||[]).push(txt);
+    }
+    for(const[f,list]of Object.entries(byField)) applyBand(x,f,list.join(', '));
+    x.sport=1;
+    st.days.add(d);
+  }
 }
 /* Сводит выгрузку в дневник. Данные прибора считаем точнее ручных,
    поэтому перезаписываем; счётчик ведём отдельно, чтобы показать в отчёте. */
@@ -1238,9 +1298,9 @@ function importBand(){
       try{
         const rows=parseCSV(await f.text());
         const kind=rows.length?bandRows(rows):null;
-        if(!kind||kind==='workout'){ st.skipped.push(f.name+(kind==='workout'?' (тренировки пока не переносим)':' (не распознан)')); continue }
-        mergeBand(kind,rows,st);
-        st.files.push(`${f.name} — ${({sleep:'сон',hr:'пульс',steps:'шаги'})[kind]}, ${rows.length} строк`);
+        if(!kind){ st.skipped.push(f.name+' (не распознан)'); continue }
+        if(kind==='workout') mergeWorkouts(rows,st); else mergeBand(kind,rows,st);
+        st.files.push(`${f.name} — ${({sleep:'сон',hr:'пульс',steps:'шаги',workout:'тренировки'})[kind]}, ${rows.length} строк`);
       }catch(e){ st.skipped.push(f.name+' — ошибка чтения') }
     }
     if(st.days.size){ migrateActs(); save(); render() }
@@ -1250,7 +1310,10 @@ function importBand(){
       Обновлено дней: <b>${st.days.size}</b>.
       ${st.skipped.length?`<br><br>Пропущено:<br>${st.skipped.map(esc).join('<br>')}`:''}
       ${st.days.size?`<br><br>Сон, пульс, шаги и оценка сна взяты из выгрузки — они точнее записанных по памяти.
-      «Пульс мин.» — минимальный за сутки, как вы и вели; пульс покоя лежит отдельным полем.`:''}
+      «Пульс мин.» — минимальный за сутки, как вы и вели; пульс покоя лежит отдельным полем.
+      Тренировки: бег и ходьба попадают в «Кардио» с километражем, велосипед — туда же словом,
+      силовая, плавание и единоборства — в «Прочее». Ваш текст в этих полях сохраняется,
+      запись браслета дописывается через « · » и заменяется при повторном импорте.`:''}
       </div>
       <div class="row" style="margin-top:14px"><span class="spacer"></span>
       <button class="btn primary" data-close>Готово</button></div>`);
