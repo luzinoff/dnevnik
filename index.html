@@ -90,6 +90,9 @@ textarea{resize:vertical;min-height:90px;line-height:1.6}
 .btn.ghost{background:none;border-color:transparent;color:var(--ink-2);padding:6px 8px}
 .btn.ghost:hover{background:var(--surface-2)}
 .btn.sm{padding:6px 10px;font-size:13px;border-radius:9px}
+/* квадратные кнопки навигации по дням: не растягиваются и не переносят текст */
+.btn.nav{width:34px;height:34px;padding:0;flex:none;display:grid;place-items:center;
+  line-height:1;font-size:15px}
 .btn.danger{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
 .btn:disabled{opacity:.4;cursor:default}
 .seg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:3px;gap:3px}
@@ -307,9 +310,27 @@ function parseSex(v){
    Английский был счётчиком 0–3, теперь три отдельные кнопки: 1 балл — Duolingo,
    2 — плюс AI-бот, 3 — плюс носитель. Общее «Общение» стало «Друзьями»,
    а «Секс» из свободной пометки развернулся в счётчик + отдельную кнопку «Руч». */
-const ACTS_V=2;
+const ACTS_V=3;
+/* упражнения: «Присед» стал «Приседаниями», «Планка» переехала в «Пресс» */
+function migrateEx(x){
+  const ex=x.ex; if(!ex) return;
+  if(ex['Присед']!=null){
+    if(ex['Приседания']==null) ex['Приседания']=ex['Присед'];
+    delete ex['Присед'];
+  }
+  const pl=String(ex['Планка']??'').trim();
+  if(pl){
+    const pr=String(ex['Пресс']??'').trim();
+    ex['Пресс'] = pr ? `${pr} · планка ${pl}` : `планка ${pl}`;
+  }
+  delete ex['Планка'];
+}
 function migrateActs(){
   if(DB.actsV>=ACTS_V) return;
+  if(DB.actsV>=2){ /* с v2 переносим только упражнения */
+    for(const x of Object.values(DB.days||{})) migrateEx(x);
+    DB.actsV=ACTS_V; return;
+  }
   /* Версия 1 уже стёрла поле sex, а пометки «Руч» жили именно в нём.
      Достаём исходные значения из вшитого seed — там данные нетронуты. */
   let orig={};
@@ -335,6 +356,7 @@ function migrateActs(){
       if(hand) x.hand=hand;
     }
     delete x.sex;
+    migrateEx(x);
   }
   DB.actsV=ACTS_V;
 }
@@ -342,23 +364,23 @@ function migrateActs(){
 const SUPP_MERGE={
   'кофе':['кофе x2'],
   'магний':['магн','маний'],
-  'витамин D':['видд','видтд','вид'],
+  'витамин d':['видд','видтд','вид'],
   'омега-3':['омега'],
   'цинк':[],
   'тирозин':['тироз'],
   'теанин':['l-теанин','тенин'],
   'zma':[],
   'ежовик':['ежов','еж'],
-  'витамин B':['витв'],
+  'витамин b':['витв'],
   'железо':['желез'],
   'тестобустер':['тестостерон','тесто','тестос','тестост','афро'],
-  'витамин A+E':['витае','виае','виаае','вите'],
+  'витамин a+e':['витае','виае','виаае','вите'],
   'поливитамины':['поливит','мультивит','мульти','поли'],
   'золофт':[],
   'ноопепт':['нооп'],
   'куркумин':['куркум'],
   'обезболивающее':['обезбол','аспирин','ибупрофен','цитрамон','анальгин','парацетамол','ибу','парац'],
-  'витамин C':['витс','вит с'],
+  'витамин c':['витс','вит с'],
   'силденафил':['силден','виагра'],
   'ацикловир':['ацикл','ацикиловир','ацикло'],
   'мельдоний':['мельдон','мельд'],
@@ -367,26 +389,26 @@ const SUPP_MERGE={
   'пирацетам':['пирац'],
   'проспекта':['проспект','просп'],
   'фенотропил':['фенотроп'],
-  'CleverMind':['клевер'],
+  'clevermind':['клевер'],
   'пробиотик':['пробио','проб','проби'],
-  'Тонгкат Али':['тонгкат'],
-  'Alpha GPC':['альфа','gpc'],
+  'тонгкат али':['тонгкат'],
+  'alpha gpc':['альфа','gpc'],
   'хондроитин':['хондро','хондр'],
-  'Нанотропил':['нанотроп','нанотропил'],
+  'нанотропил':['нанотроп'],
   'креатин':[],
-  'Гинкго Билоба':['гинкго'],
+  'гинкго билоба':['гинкго'],
   'антибиотик':['антибио','антиб'],
-  'CDP-холин':['cdp'],
+  'cdp-холин':['cdp'],
   'тизанидин':['тиза','тизанид','миорелаксант','миорелакс','миорел'],
   'мексидол':[],
   'мильгамма':['мильгам','мильг'],
   'кортексин':['кортекс'],
   'ниацин':[], 'бетаин':[], 'зодак':[],
   'каберголин':['кабер','каберлголин','каберлогин'],
-  '5-HTP':['5нтр','5htp','5htp+магний','триптофан'],
+  '5-htp':['5нтр','5htp+магний','триптофан'],
   'сорбент':['полисорб','альфасорб','энтерос','лекарства от отравления'],
   'лизобакт':[], 'женьшень':[], 'кальций':[],
-  'флуконазол':['флуко'], 'терафлю':[], 'нистатин':[], 'ХГЧ':['хгч'],
+  'флуконазол':['флуко'], 'терафлю':[], 'нистатин':[], 'хгч':[],
   'энергетик':[]
 };
 /* удаляются из истории как мусорные записи */
@@ -418,15 +440,16 @@ const canonSupp=n=>{
   const vit=k.match(/^(?:вит\w*?|в)([дdсcвbае]{1,3})$/);
   if(vit){
     const L=vit[1].replace(/[dcb]/g,c=>({d:'д',c:'с',b:'в'}[c]));
-    if(L==='д') return 'витамин D';
-    if(L==='с') return 'витамин C';
-    if(L==='в') return 'витамин B';
-    if(/^а?е$|^ае$|^е$/.test(L)) return 'витамин A+E';
+    if(L==='д') return 'витамин d';
+    if(L==='с') return 'витамин c';
+    if(L==='в') return 'витамин b';
+    if(/^а?е$|^ае$|^е$/.test(L)) return 'витамин a+e';
   }
-  return t;
+  /* незнакомое название тоже с маленькой буквы — справочник ведём единообразно */
+  return t.toLowerCase();
 };
 /* ревизия словаря: увеличить при правке SUPP_MERGE — пересчёт пройдёт заново */
-const SUPP_V=6;
+const SUPP_V=7;
 
 const ACT_W=()=>Object.fromEntries(ACTS.map(a=>[a.k,a.w0?0:1]));
 const DEF_CFG={theme:'light',clientId:'',fileId:'',everSignedIn:false,lastSync:0,autoSync:true,
@@ -666,8 +689,9 @@ function render(){
 }
 
 /* ================= ДЕНЬ ================= */
-const EXS=[['Кардио','напр. 3000 или «шаги»'],['Подтягивания','20/15'],['Отжимания','брусья / 50'],
-           ['Бицепс',''],['Присед',''],['Пресс','30'],['Планка',''],['Растяжка',''],['Прочее','']];
+const EXS=[['Растяжка',''],['Кардио','напр. 3000 или «шаги»'],['Подтягивания','20/15'],
+           ['Отжимания','брусья / 50'],['Бицепс',''],['Приседания',''],['Пресс','30 / планка 2'],
+           ['Прочее','']];
 
 function rDay(){
   const x=day(cur), isT=cur===today(), sc=score(cur);
@@ -675,10 +699,10 @@ function rDay(){
   $('#v-day').innerHTML=`
   <div class="card">
     <div class="row">
-      <button class="btn sm" id="pv">←</button>
-      <input type="date" id="dp" value="${cur}" max="${today()}" style="flex:1;text-align:center">
-      <button class="btn sm" id="nx" ${isT?'disabled':''}>→</button>
-      ${isT?'':'<button class="btn sm" id="tdy">Сегодня</button>'}
+      <button class="btn sm nav" id="pv" title="Предыдущий день">←</button>
+      <input type="date" id="dp" value="${cur}" max="${today()}" style="flex:1;min-width:0;text-align:center">
+      <button class="btn sm nav" id="nx" title="Следующий день" ${isT?'disabled':''}>→</button>
+      ${isT?'':'<button class="btn sm nav" id="tdy" title="Вернуться к сегодняшнему дню" aria-label="Сегодня">⌖</button>'}
       ${workBadge(cur)}
       <div style="margin-left:2px;text-align:right">
         <div class="score-big" id="scv">${sc}</div>
