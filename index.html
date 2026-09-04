@@ -1611,10 +1611,11 @@ function rNotes(){
     <h2 id="nTitle" style="margin-bottom:10px;user-select:none">Заметки${zhOpen?' <span class="small" style="color:var(--accent-2);font-weight:400">· скрытое открыто</span>':''}</h2>
     <div class="chips">${vis.map(([k,n])=>
     `<button class="chip ns ${nsec===k?'on':''}" data-s="${k}">${n} ${(DB.notes[k]||[]).length}</button>`).join('')}
-    <button class="chip ns" id="nsecBtn" title="Управление разделами">⚙</button></div>
-    <div class="row" style="margin-top:11px"><button class="btn sm" id="nAdd">+ Добавить</button>
-    ${zhOpen?'<span class="spacer"></span><button class="btn sm ghost" id="nLock">Скрыть</button>':''}</div></div>
+    <button class="chip ns" id="nsecBtn" title="Управление разделами">⚙</button></div></div>
     <div class="small muted" style="margin:2px 2px 0">Тап по заметке — правка и перенос, ⚙ — управление разделами</div>
+    <!-- «+ Добавить» отделено от ряда разделов подсказкой: рядом с «⚙» их путали -->
+    <div class="row" style="margin:11px 2px"><button class="btn sm" id="nAdd">+ Добавить заметку</button>
+    ${zhOpen?'<span class="spacer"></span><button class="btn sm ghost" id="nLock">Скрыть</button>':''}</div>
   ${list.length?`<div class="card">${list.map((t,i)=>
     `<div class="row" style="align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line-soft)">
       <span class="nedit" data-i="${i}" style="flex:1;cursor:pointer">${hl(t)}</span>
