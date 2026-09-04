@@ -1137,30 +1137,64 @@ function rGoals(){
       save();closeSheet();rGoals()};
   };
 }
-/* Правка цели: текст и раздел в одном окне, там же удаление.
-   Смена раздела — просто новое значение scope, порядок в списке не трогаем. */
+/* ---- перенос записи: между разделами и между целями и заметками ----
+   Цель и заметка — это один и тот же текст в разных списках, поэтому
+   в окне правки два связанных выпадающих списка: тип и раздел.
+   Наборы разделов у целей и заметок разные, так что смена типа
+   перерисовывает второй список. */
+const secOpts=(kind,sel)=>secs(kind)
+  /* скрытый раздел показываем, только если он открыт или запись уже в нём */
+  .filter(([k])=>k!==HIDDEN_SEC||zhOpen||k===sel)
+  .map(([k,n])=>`<option value="${k}"${k===sel?' selected':''}>${n}</option>`).join('');
+const typeFields=(kind,sec)=>`
+  <label class="fld" style="margin-bottom:12px"><span>Тип</span>
+    <select id="ekind">
+      <option value="goals"${kind==='goals'?' selected':''}>Цель</option>
+      <option value="notes"${kind==='notes'?' selected':''}>Заметка</option>
+    </select></label>
+  <label class="fld" style="margin-bottom:16px"><span>Раздел</span>
+    <select id="esec">${secOpts(kind,sec)}</select></label>`;
+function bindTypeFields(kind,sec){
+  $('#ekind').onchange=()=>{
+    const k=$('#ekind').value;
+    /* вернулись к исходному типу — возвращаем и исходный раздел */
+    $('#esec').innerHTML=secOpts(k, k===kind?sec:'');
+  };
+}
+const kindName=k=>k==='goals'?'цели':'заметки';
+/* Куда бы запись ни уехала, сообщаем полный адрес: тип и раздел. */
+function movedToast(kind,sec){ toast('Перенесено в '+kindName(kind)+', «'+secName(kind,sec)+'»') }
+
+/* Правка цели: текст, тип и раздел в одном окне, там же удаление. */
 function editGoal(id){
   const x=DB.goals.find(y=>y.id===id); if(!x) return;
   openSheet(`<h2>Цель</h2>
     <label class="fld" style="margin-bottom:12px"><span>Текст</span>
       <input type="text" id="gt" value="${esc(x.text)}"></label>
-    <label class="fld" style="margin-bottom:16px"><span>Раздел</span>
-      <select id="gs">${SCOPES().map(([k,n])=>
-        `<option value="${k}"${k===x.scope?' selected':''}>${n}</option>`).join('')}</select></label>
+    ${typeFields('goals',x.scope)}
     <div class="row"><button class="btn danger" id="gdel">Удалить</button>
       <span class="spacer"></span>
       <button class="btn" data-close>Отмена</button>
       <button class="btn primary" id="gok">Сохранить</button></div>`);
+  bindTypeFields('goals',x.scope);
   $('#gdel').onclick=()=>{
     if(!confirm('Удалить цель?'))return;
     DB.goals=DB.goals.filter(y=>y.id!==id); save(); closeSheet(); rGoals();
   };
   $('#gok').onclick=()=>{
     const t=$('#gt').value.trim(); if(!t) return toast('Пусто');
-    const to=$('#gs').value, moved = to!==x.scope;
-    x.text=t; x.scope=to;
-    save(); closeSheet(); rGoals();
-    if(moved) toast('Перенесено в «'+secName('goals',to)+'»');
+    const kind=$('#ekind').value, to=$('#esec').value;
+    if(kind==='goals'){
+      const moved = to!==x.scope;
+      x.text=t; x.scope=to;
+      save(); closeSheet(); rGoals();
+      if(moved) movedToast('goals',to);
+      return;
+    }
+    /* уходит в заметки: отметка «выполнено» там не нужна, остаётся текст */
+    DB.goals=DB.goals.filter(y=>y.id!==id);
+    DB.notes=DB.notes||{}; DB.notes[to]=DB.notes[to]||[]; DB.notes[to].unshift(t);
+    save(); closeSheet(); rGoals(); movedToast('notes',to);
   };
 }
 
@@ -1609,35 +1643,41 @@ function rNotes(){
       DB.notes[nsec]=DB.notes[nsec]||[];DB.notes[nsec].unshift(t);save();closeSheet();rNotes()};
   };
 }
-/* Правка заметки: текст и раздел в одном окне. Смена раздела —
-   это перенос: запись уходит из текущего списка в начало выбранного. */
+/* Правка заметки: текст, тип и раздел в одном окне. Смена раздела —
+   это перенос: запись уходит из текущего списка в начало выбранного.
+   Смена типа на «Цель» переносит текст в Цели невыполненной. */
 function editNote(i){
   const from=nsec, cur=(DB.notes[from]||[])[i];
   if(cur==null) return;
-  const vis=NSEC().filter(([k])=>k!==HIDDEN_SEC||zhOpen);
   openSheet(`<h2>Заметка</h2>
     <textarea id="ntx" style="margin-bottom:12px">${esc(cur)}</textarea>
-    <label class="fld" style="margin-bottom:16px"><span>Раздел</span>
-      <select id="nsl">${vis.map(([k,n])=>
-        `<option value="${k}"${k===from?' selected':''}>${n}</option>`).join('')}</select></label>
+    ${typeFields('notes',from)}
     <div class="row"><button class="btn danger" id="ndel">Удалить</button>
       <span class="spacer"></span>
       <button class="btn" data-close>Отмена</button>
       <button class="btn primary" id="nok">Сохранить</button></div>`);
+  bindTypeFields('notes',from);
   $('#ndel').onclick=()=>{
     if(!confirm('Удалить?'))return;
     DB.notes[from].splice(i,1); save(); closeSheet(); rNotes();
   };
   $('#nok').onclick=()=>{
     const t=$('#ntx').value.trim(); if(!t) return toast('Пусто');
-    const to=$('#nsl').value;
-    if(to===from) DB.notes[from][i]=t;
-    else{
-      DB.notes[from].splice(i,1);
-      DB.notes[to]=DB.notes[to]||[]; DB.notes[to].unshift(t);
+    const kind=$('#ekind').value, to=$('#esec').value;
+    if(kind==='notes'){
+      if(to===from) DB.notes[from][i]=t;
+      else{
+        DB.notes[from].splice(i,1);
+        DB.notes[to]=DB.notes[to]||[]; DB.notes[to].unshift(t);
+      }
+      save(); closeSheet(); rNotes();
+      if(to!==from) movedToast('notes',to);
+      return;
     }
-    save(); closeSheet(); rNotes();
-    if(to!==from) toast('Перенесено в «'+secName('notes',to)+'»');
+    /* уходит в цели: новая цель, ещё не выполненная */
+    DB.notes[from].splice(i,1);
+    DB.goals.unshift({id:uid(),text:t,scope:to,done:false,created:today()});
+    save(); closeSheet(); rNotes(); movedToast('goals',to);
   };
 }
 
