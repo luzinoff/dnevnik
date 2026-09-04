@@ -468,9 +468,18 @@ const ACT_W=()=>Object.fromEntries(ACTS.map(a=>[a.k,a.w0?0:1]));
 const DEF_CFG={theme:'light',clientId:'',fileId:'',everSignedIn:false,lastSync:0,autoSync:true,
   weights:ACT_W(), suppOrder:[], hidden:[]};
 
-const BLANK=()=>({days:{},goals:[],notes:{},supps:[],updated:0});
+/* sec — списки разделов целей и заметок, secDel — удалённые вручную ключи */
+const BLANK=()=>({days:{},goals:[],notes:{},supps:[],sec:{},secDel:{},updated:0});
 let DB=BLANK(), CFG={...DEF_CFG}, cur=today(), tab='day';
-let dq='', gfilter='all', nsec='wins';
+let dq='', gfilter='', nsec='';
+/* Разделы можно переименовать, добавить и удалить, поэтому активный фильтр
+   держим проверенным: пропал раздел — встаём на первый доступный.
+   Скрытый раздел первым не выбираем, иначе он откроется сам собой. */
+function initFilters(){
+  const s=SCOPES(), n=NSEC().filter(([k])=>k!==HIDDEN_SEC||zhOpen);
+  if(!gfilter||!s.some(x=>x[0]===gfilter)) gfilter=s[0][0];
+  if(!nsec||!n.some(x=>x[0]===nsec)) nsec=(n[0]||NSEC()[0])[0];
+}
 /* «Ж» скрыт: открывается тремя тапами по заголовку «Заметки», закрывается при уходе с вкладки */
 const HIDDEN_SEC='zh_list';
 let zhOpen=false, zhTaps=0, zhT=null;
@@ -489,6 +498,7 @@ function load(){
   CFG.weights=Object.assign(ACT_W(),CFG.weights||{});
   /* «Руч» — наблюдение, а не достижение: вес держим нулевым */
   ACTS.filter(a=>a.w0).forEach(a=>CFG.weights[a.k]=0);
+  initFilters();
 }
 function seedFromFile(){
   try{
@@ -703,7 +713,7 @@ async function pull(silent){
     if(j&&(j.updated||0)>(DB.updated||0)){
       DB=Object.assign(BLANK(),j);
       if(DB.suppV!==SUPP_V) migrateSupps();
-      migrateActs(); migrateGoals();
+      migrateActs(); migrateGoals(); initFilters();
       localStorage.setItem(LS,JSON.stringify(DB)); render();
       if(!silent)toast('Загружено из облака');
     } else if(!silent) toast('Локальные данные не старее облачных');
@@ -730,7 +740,7 @@ const TABS=[
 $('#tabbar').innerHTML=TABS.map(t=>`<button class="tab${t.id==='day'?' on':''}" data-tab="${t.id}"><svg viewBox="0 0 24 24">${t.icon}</svg>${t.name}</button>`).join('');
 $('#tabbar').onclick=e=>{const b=e.target.closest('[data-tab]');if(b)go(b.dataset.tab)};
 function go(id){
-  if(tab==='notes'&&id!=='notes'){zhOpen=false;zhTaps=0;if(nsec===HIDDEN_SEC)nsec='wins'}
+  if(tab==='notes'&&id!=='notes'){zhOpen=false;zhTaps=0;if(nsec===HIDDEN_SEC){nsec='';initFilters()}}
   tab=id;$$('.tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
   $$('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+id));window.scrollTo({top:0});render()}
 function render(){
@@ -1010,16 +1020,91 @@ function rDiary(){
 const hl=t=>esc(t).replace(/#([\wа-яёА-ЯЁ-]+)/g,'<span class="tag">#$1</span>');
 
 /* ================= ЦЕЛИ ================= */
-const SCOPES=[['month','Месяц'],['year','2026'],['phuket','Пхукет'],['regular','Регулярные'],
+/* Разделы целей и заметок можно переименовывать и добавлять свои,
+   поэтому списки живут в данных. Ниже — только то, с чего начинали. */
+const SCOPES_DEF=[['month','Месяц'],['year','2026'],['phuket','Пхукет'],['regular','Регулярные'],
   ['life','Глобальные'],['wish','100 хочу']];
+const NSEC_DEF=[['wins','Победы'],['books','Книги'],['insights','Инсайты'],
+  ['biz','Бизнес'],['self','Самооценка'],['grow','Изменения'],['talk','Общение'],
+  ['zh_list','Ж'],['free','Свои']];
+/* kind: 'goals' | 'notes'. Возвращает живой массив пар [ключ, название]. */
+function secs(kind){
+  const def = kind==='goals'?SCOPES_DEF:NSEC_DEF;
+  DB.sec=DB.sec||{}; DB.secDel=DB.secDel||{};
+  const gone=DB.secDel[kind]=DB.secDel[kind]||[];
+  let L=DB.sec[kind];
+  if(!Array.isArray(L)) L=DB.sec[kind]=def.map(p=>[...p]);
+  /* разделы, добавленные в новой версии приложения, дописываем в конец;
+     удалённые вручную не воскрешаем — их ключи помним в DB.secDel */
+  for(const[k,n]of def) if(!gone.includes(k)&&!L.some(s=>s[0]===k)) L.push([k,n]);
+  return L;
+}
+const SCOPES=()=>secs('goals');
+const NSEC=()=>secs('notes');
+const secName=(kind,k)=>(secs(kind).find(s=>s[0]===k)||[,k])[1];
+/* сколько записей в разделе — нужно и для подписей, и чтобы не дать
+   удалить непустой раздел вместе с содержимым */
+const secCount=(kind,k)=>kind==='goals'
+  ? DB.goals.filter(g=>g.scope===k).length
+  : ((DB.notes||{})[k]||[]).length;
+
+/* Окно «Разделы»: переименование, добавление, удаление пустых. */
+function sectionsSheet(kind,after){
+  const title=kind==='goals'?'Разделы целей':'Разделы заметок';
+  const vis=()=>secs(kind).filter(([k])=>k!==HIDDEN_SEC||zhOpen);
+  const draw=()=>{
+    openSheet(`<h2>${title}</h2>
+      <div id="slist">${vis().map(([k,n])=>`
+        <div class="row" style="margin-bottom:8px">
+          <input type="text" class="snm" data-k="${k}" value="${esc(n)}" style="flex:1;min-width:0">
+          <span class="small muted" style="width:34px;text-align:right">${secCount(kind,k)}</span>
+          <button class="btn ghost sdel" data-k="${k}" title="Удалить раздел">✕</button>
+        </div>`).join('')}</div>
+      <div class="row" style="margin-top:12px">
+        <input type="text" id="snew" placeholder="Название нового раздела" style="flex:1;min-width:0">
+        <button class="btn sm" id="sadd">Добавить</button></div>
+      <div class="small muted" style="margin-top:10px">Удалить можно только пустой раздел —
+        сначала перенесите записи.</div>
+      <div class="row" style="margin-top:14px"><span class="spacer"></span>
+        <button class="btn" data-close>Закрыть</button>
+        <button class="btn primary" id="sok">Сохранить</button></div>`);
+    $('#sadd').onclick=()=>{
+      const t=$('#snew').value.trim(); if(!t) return toast('Введите название');
+      apply();
+      secs(kind).push(['u'+uid(),t]);
+      save(); draw();
+    };
+    $$('.sdel').forEach(b=>b.onclick=()=>{
+      const k=b.dataset.k;
+      if(secCount(kind,k)) return toast('Раздел не пуст');
+      if(secs(kind).length<=1) return toast('Нужен хотя бы один раздел');
+      if(!confirm('Удалить раздел «'+secName(kind,k)+'»?')) return;
+      apply();
+      DB.sec[kind]=secs(kind).filter(s=>s[0]!==k);
+      DB.secDel[kind].push(k);
+      if(kind==='notes') delete (DB.notes||{})[k];
+      save(); draw();
+    });
+    $('#sok').onclick=()=>{ apply(); save(); closeSheet(); after&&after() };
+  };
+  /* переносим введённые названия в данные, не закрывая окно */
+  const apply=()=>{
+    const L=secs(kind);
+    $$('.snm').forEach(i=>{
+      const t=i.value.trim(); if(!t) return;
+      const s=L.find(s=>s[0]===i.dataset.k); if(s) s[1]=t;
+    });
+  };
+  draw();
+}
 function rGoals(){
-  const g=DB.goals.filter(x=>gfilter==='all'||x.scope===gfilter);
-  const done=g.filter(x=>x.done).length;
+  initFilters();
+  const scs=SCOPES(), g=DB.goals.filter(x=>x.scope===gfilter), done=g.filter(x=>x.done).length;
   $('#v-goals').innerHTML=`
   <div class="card">
     <div class="chips">
-      <button class="chip gf ${gfilter==='all'?'on':''}" data-s="all">Все ${DB.goals.length}</button>
-      ${SCOPES.map(([k,n])=>`<button class="chip gf ${gfilter===k?'on':''}" data-s="${k}">${n} ${DB.goals.filter(x=>x.scope===k).length}</button>`).join('')}
+      ${scs.map(([k,n])=>`<button class="chip gf ${gfilter===k?'on':''}" data-s="${k}">${n} ${DB.goals.filter(x=>x.scope===k).length}</button>`).join('')}
+      <button class="chip gf" id="gsec" title="Управление разделами">⚙</button>
     </div>
     <div style="margin-top:12px" class="row">
       <div class="bar" style="flex:1"><i style="width:${g.length?done/g.length*100:0}%"></i></div>
@@ -1031,20 +1116,19 @@ function rGoals(){
     <div class="row" style="margin-bottom:7px;gap:4px">
     <button class="pill gtg ${x.done?'on':''}" data-id="${x.id}" style="flex:1;margin:0">
       <span class="box"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg></span>
-      <span class="nm" style="${x.done?'opacity:.55;text-decoration:line-through':''}">${esc(x.text)}
-        ${gfilter==='all'?`<span class="tm" style="display:block">${(SCOPES.find(s=>s[0]===x.scope)||[,''])[1]}</span>`:''}</span>
+      <span class="nm" style="${x.done?'opacity:.55;text-decoration:line-through':''}">${esc(x.text)}</span>
     </button>
     <button class="btn ghost ged" data-id="${x.id}" title="Изменить" style="flex:none">✎</button>
     </div>`).join(''):'<div class="empty">Целей нет</div>'}
   ${g.length?'<div class="small muted" style="margin:2px 2px 0">Тап — отметить, ✎ — правка и перенос в другой раздел</div>':''}`;
-  $$('.gf').forEach(b=>b.onclick=()=>{gfilter=b.dataset.s;rGoals()});
+  $$('.gf').forEach(b=>b.onclick=()=>{if(b.id==='gsec') sectionsSheet('goals',rGoals);else{gfilter=b.dataset.s;rGoals()}});
   $$('.gtg').forEach(b=>b.onclick=()=>{
     const x=DB.goals.find(y=>y.id===b.dataset.id); x.done=!x.done; save(); rGoals()});
   $$('.ged').forEach(b=>b.onclick=()=>editGoal(b.dataset.id));
   $('#gAdd').onclick=()=>{
     openSheet(`<h2>Новая цель</h2>
       <label class="fld" style="margin-bottom:12px"><span>Текст</span><input type="text" id="gt"></label>
-      <label class="fld" style="margin-bottom:16px"><span>Раздел</span><select id="gs">${SCOPES.map(([k,n])=>`<option value="${k}">${n}</option>`).join('')}</select></label>
+      <label class="fld" style="margin-bottom:16px"><span>Раздел</span><select id="gs">${SCOPES().map(([k,n])=>`<option value="${k}"${k===gfilter?' selected':''}>${n}</option>`).join('')}</select></label>
       <div class="row"><button class="btn" data-close style="flex:1">Отмена</button>
         <button class="btn primary" id="gok" style="flex:1">Добавить</button></div>`);
     setTimeout(()=>$('#gt').focus(),80);
@@ -1061,7 +1145,7 @@ function editGoal(id){
     <label class="fld" style="margin-bottom:12px"><span>Текст</span>
       <input type="text" id="gt" value="${esc(x.text)}"></label>
     <label class="fld" style="margin-bottom:16px"><span>Раздел</span>
-      <select id="gs">${SCOPES.map(([k,n])=>
+      <select id="gs">${SCOPES().map(([k,n])=>
         `<option value="${k}"${k===x.scope?' selected':''}>${n}</option>`).join('')}</select></label>
     <div class="row"><button class="btn danger" id="gdel">Удалить</button>
       <span class="spacer"></span>
@@ -1076,7 +1160,7 @@ function editGoal(id){
     const to=$('#gs').value, moved = to!==x.scope;
     x.text=t; x.scope=to;
     save(); closeSheet(); rGoals();
-    if(moved) toast('Перенесено в «'+SCOPES.find(s=>s[0]===to)[1]+'»');
+    if(moved) toast('Перенесено в «'+secName('goals',to)+'»');
   };
 }
 
@@ -1414,7 +1498,7 @@ function importJSON(){
       if(!confirm('Заменить текущие данные данными из файла?'))return;
       DB=Object.assign(BLANK(),j);
       if(DB.suppV!==SUPP_V) migrateSupps();
-      migrateActs(); migrateGoals();
+      migrateActs(); migrateGoals(); initFilters();
       save();render();toast('Импортировано');
     }catch(e){toast('Ошибка: '+e.message)}};
     r.readAsText(f)};
@@ -1481,29 +1565,28 @@ function hintAuth(msg){
 }
 
 /* ================= ЗАМЕТКИ ================= */
-const NSEC=[['wins','Победы'],['books','Книги'],['insights','Инсайты'],
-  ['biz','Бизнес'],['self','Самооценка'],['grow','Изменения'],['talk','Общение'],
-  ['zh_list','Ж'],['free','Свои']];
+/* список разделов — NSEC_DEF и secs('notes') выше, в блоке «Цели» */
 
 function rNotes(){
+  initFilters();
   DB.notes.free=DB.notes.free||[];
-  if(nsec===HIDDEN_SEC&&!zhOpen) nsec='wins';
   const list=DB.notes[nsec]||[];
-  const secs=NSEC.filter(([k])=>k!==HIDDEN_SEC||zhOpen);
+  const vis=NSEC().filter(([k])=>k!==HIDDEN_SEC||zhOpen);
   $('#v-notes').innerHTML=`
   <div class="card">
     <h2 id="nTitle" style="margin-bottom:10px;user-select:none">Заметки${zhOpen?' <span class="small" style="color:var(--accent-2);font-weight:400">· скрытое открыто</span>':''}</h2>
-    <div class="chips">${secs.map(([k,n])=>
-    `<button class="chip ns ${nsec===k?'on':''}" data-s="${k}">${n} ${(DB.notes[k]||[]).length}</button>`).join('')}</div>
+    <div class="chips">${vis.map(([k,n])=>
+    `<button class="chip ns ${nsec===k?'on':''}" data-s="${k}">${n} ${(DB.notes[k]||[]).length}</button>`).join('')}
+    <button class="chip ns" id="nsecBtn" title="Управление разделами">⚙</button></div>
     <div class="row" style="margin-top:11px"><button class="btn sm" id="nAdd">+ Добавить</button>
     ${zhOpen?'<span class="spacer"></span><button class="btn sm ghost" id="nLock">Скрыть</button>':''}</div></div>
+    <div class="small muted" style="margin:2px 2px 0">Тап по заметке — правка и перенос, ⚙ — управление разделами</div>
   ${list.length?`<div class="card">${list.map((t,i)=>
     `<div class="row" style="align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line-soft)">
       <span class="nedit" data-i="${i}" style="flex:1;cursor:pointer">${hl(t)}</span>
-      <button class="btn ghost nd" data-i="${i}" title="Удалить">✕</button></div>`).join('')}</div>
-    <div class="small muted" style="margin:9px 2px 0">Тап по заметке — правка и перенос в другой раздел</div>`
+      <button class="btn ghost nd" data-i="${i}" title="Удалить">✕</button></div>`).join('')}</div>`
     :'<div class="empty">Пусто</div>'}`;
-  $$('.ns').forEach(b=>b.onclick=()=>{nsec=b.dataset.s;rNotes()});
+  $$('.ns').forEach(b=>b.onclick=()=>{if(b.id==='nsecBtn') sectionsSheet('notes',rNotes);else{nsec=b.dataset.s;rNotes()}});
   /* три быстрых тапа по слову «Заметки» открывают скрытый раздел */
   $('#nTitle').onclick=()=>{
     if(zhOpen) return;
@@ -1511,13 +1594,13 @@ function rNotes(){
     if(zhTaps>=3){ zhTaps=0; zhOpen=true; nsec=HIDDEN_SEC;
       if(navigator.vibrate)navigator.vibrate(20); rNotes(); }
   };
-  const lk=$('#nLock'); if(lk)lk.onclick=()=>{zhOpen=false;nsec='wins';rNotes()};
+  const lk=$('#nLock'); if(lk)lk.onclick=()=>{zhOpen=false;nsec='';initFilters();rNotes()};
   $$('.nd').forEach(b=>b.onclick=()=>{
     if(!confirm('Удалить?'))return;
     DB.notes[nsec].splice(+b.dataset.i,1);save();rNotes()});
   $$('.nedit').forEach(b=>b.onclick=()=>editNote(+b.dataset.i));
   $('#nAdd').onclick=()=>{
-    openSheet(`<h2>Заметка · ${NSEC.find(s=>s[0]===nsec)[1]}</h2>
+    openSheet(`<h2>Заметка · ${secName('notes',nsec)}</h2>
       <textarea id="ntx" placeholder="Текст"></textarea>
       <div class="row" style="margin-top:14px"><button class="btn" data-close style="flex:1">Отмена</button>
       <button class="btn primary" id="nok" style="flex:1">Добавить</button></div>`);
@@ -1531,11 +1614,11 @@ function rNotes(){
 function editNote(i){
   const from=nsec, cur=(DB.notes[from]||[])[i];
   if(cur==null) return;
-  const secs=NSEC.filter(([k])=>k!==HIDDEN_SEC||zhOpen);
+  const vis=NSEC().filter(([k])=>k!==HIDDEN_SEC||zhOpen);
   openSheet(`<h2>Заметка</h2>
     <textarea id="ntx" style="margin-bottom:12px">${esc(cur)}</textarea>
     <label class="fld" style="margin-bottom:16px"><span>Раздел</span>
-      <select id="nsl">${secs.map(([k,n])=>
+      <select id="nsl">${vis.map(([k,n])=>
         `<option value="${k}"${k===from?' selected':''}>${n}</option>`).join('')}</select></label>
     <div class="row"><button class="btn danger" id="ndel">Удалить</button>
       <span class="spacer"></span>
@@ -1554,7 +1637,7 @@ function editNote(i){
       DB.notes[to]=DB.notes[to]||[]; DB.notes[to].unshift(t);
     }
     save(); closeSheet(); rNotes();
-    if(to!==from) toast('Перенесено в «'+NSEC.find(s=>s[0]===to)[1]+'»');
+    if(to!==from) toast('Перенесено в «'+secName('notes',to)+'»');
   };
 }
 
