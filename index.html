@@ -95,6 +95,22 @@ textarea{resize:vertical;min-height:90px;line-height:1.6}
   line-height:1;font-size:15px}
 .btn.danger{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
 .btn:disabled{opacity:.4;cursor:default}
+/* ---- голосовой ввод ---- */
+.mic-row{display:flex;align-items:center;gap:9px;margin-top:7px}
+.btn.mic{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;font-size:13px;flex:none}
+.btn.mic svg{width:15px;height:15px;stroke:currentColor;stroke-width:1.9;fill:none;
+  stroke-linecap:round;stroke-linejoin:round}
+.btn.mic.rec{background:var(--warn);border-color:var(--warn);color:#fff}
+.btn.mic.rec svg{stroke:#fff}
+/* пульсация показывает, что микрофон открыт: без неё запись легко забыть выключить */
+.btn.mic.rec::before{content:'';width:8px;height:8px;border-radius:50%;background:#fff;
+  flex:none;animation:micPulse 1.1s ease-in-out infinite}
+@keyframes micPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.72)}}
+@media(prefers-reduced-motion:reduce){.btn.mic.rec::before{animation:none}}
+.mic-note{font-size:12px;color:var(--ink-3);line-height:1.45;min-width:0}
+.mic-note.err{color:var(--warn)}
+/* серым — то, что распознаётся прямо сейчас и ещё может измениться */
+.mic-live{color:var(--ink-3);font-style:italic}
 .seg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:3px;gap:3px}
 .seg button{flex:1;border:0;background:none;border-radius:8px;padding:7px 4px;font-size:13px;color:var(--ink-2);transition:.15s}
 .seg button.on{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:var(--shadow)}
@@ -724,7 +740,8 @@ async function pull(silent){
 }
 
 function openSheet(h){$('#sheet').innerHTML=h;$('#modal').classList.add('on')}
-function closeSheet(){$('#modal').classList.remove('on')}
+/* микрофон гасим всегда: окно закрыто, а запись бы осталась висеть */
+function closeSheet(){$('#modal').classList.remove('on'); if(typeof micStop==='function')micStop()}
 $('#modal').addEventListener('click',e=>{if(e.target.dataset.close!==undefined||e.target.closest('[data-close]'))closeSheet()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSheet()});
 function applyTheme(){document.documentElement.dataset.theme=CFG.theme}
@@ -1598,6 +1615,115 @@ function hintAuth(msg){
   return 'Ошибка: '+s;
 }
 
+/* ================= ГОЛОСОВОЙ ВВОД =================
+   Web Speech API: распознавание идёт средствами браузера, ничего
+   не устанавливается и не подключается. Работает в Chrome, Edge
+   и Safari; в Firefox API нет — там кнопка не рисуется вовсе.
+
+   Важно про офлайн: Chrome отправляет звук на серверы Google, поэтому
+   без интернета и при открытии файла с диска (file://) распознавание
+   отвечает ошибкой network. Это не поломка — на GitHub Pages всё идёт.
+
+   Готовые куски речи дописываются в textarea, а то, что распознаётся
+   прямо сейчас, показывается серым под полем: промежуточный результат
+   ещё меняется на лету, класть его в поле нельзя. */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let micRec=null, micWant=false, micTa=null, micLast=0;
+
+/* Разметка ряда с кнопкой. Кладётся сразу под textarea. */
+function micHTML(){
+  if(!SR) return `<div class="mic-row"><span class="mic-note">Голосовой ввод доступен в Chrome, Edge и Safari</span></div>`;
+  return `<div class="mic-row">
+    <button type="button" class="btn mic" id="micBtn">
+      <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/>
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span id="micLbl">Голос</span></button>
+    <span class="mic-note" id="micNote"></span></div>`;
+}
+
+/* Привязка к конкретному полю. taSel — селектор textarea. */
+function bindMic(taSel){
+  if(!SR) return;
+  const btn=$('#micBtn'), ta=$(taSel); if(!btn||!ta) return;
+  btn.onclick=()=>micRec?micStop():micStart(ta);
+}
+
+function micNote(msg,err){
+  const n=$('#micNote'); if(!n) return;
+  n.className='mic-note'+(err?' err':'');
+  n.innerHTML=msg||'';
+}
+function micLabel(on){
+  const b=$('#micBtn'), l=$('#micLbl');
+  if(b) b.classList.toggle('rec',on);
+  if(l) l.textContent=on?'Стоп':'Голос';
+}
+
+function micStart(ta){
+  if(micRec) return;
+  micTa=ta;
+  const r=new SR();
+  r.lang='ru-RU'; r.continuous=true; r.interimResults=true; r.maxAlternatives=1;
+
+  r.onstart=()=>{micLabel(true); micNote('Слушаю. Говорите, текст добавится в поле.')};
+
+  r.onresult=e=>{
+    let fin='', live='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t=e.results[i][0].transcript;
+      if(e.results[i].isFinal) fin+=t; else live+=t;
+    }
+    if(fin.trim()) micAppend(micTa,fin.trim());
+    micNote(live.trim()?`<span class="mic-live">${esc(live.trim())}</span>`
+                      :'Слушаю. Говорите, текст добавится в поле.');
+  };
+
+  r.onerror=e=>{
+    const m={
+      'not-allowed':'Браузер не дал доступ к микрофону. Разрешите его в настройках сайта.',
+      'service-not-allowed':'Браузер не дал доступ к микрофону. Разрешите его в настройках сайта.',
+      'no-speech':'Речь не распознана — попробуйте ещё раз.',
+      'audio-capture':'Микрофон не найден.',
+      'network':'Нет связи с распознаванием. Оно требует интернета и не работает, когда файл открыт с диска.'
+    }[e.error]||('Ошибка распознавания: '+e.error);
+    /* no-speech Chrome шлёт после паузы — это не повод гасить запись */
+    if(e.error!=='no-speech'){ micWant=false; }
+    micNote(m,true);
+  };
+
+  r.onend=()=>{
+    /* Chrome сам обрывает continuous после тишины. Пока пользователь
+       не нажал «Стоп» — поднимаем заново, но не чаще раза в секунду,
+       иначе при отказе в доступе получим бесконечный цикл. */
+    if(micWant && Date.now()-micLast>1000){
+      micLast=Date.now();
+      try{ r.start(); return; }catch(err){}
+    }
+    micRec=null; micWant=false; micLabel(false);
+    const n=$('#micNote'); if(n&&!n.classList.contains('err')) micNote('');
+  };
+
+  micRec=r; micWant=true; micLast=Date.now();
+  try{ r.start(); }
+  catch(err){ micRec=null; micWant=false; micLabel(false); micNote('Не удалось включить микрофон.',true) }
+}
+
+function micStop(){
+  micWant=false;
+  if(micRec){ try{micRec.stop()}catch(e){} }
+  micRec=null; micLabel(false);
+}
+
+/* Дописывание: текущее значение поля читается заново, поэтому
+   правку руками во время диктовки ничего не затирает. */
+function micAppend(ta,txt){
+  if(!ta||!ta.isConnected) return micStop();
+  const was=ta.value, tail=was.trim().slice(-1);
+  /* после точки, восклицательного и вопросительного — новая фраза с большой буквы */
+  if(!was.trim()||'.!?'.includes(tail)) txt=txt.charAt(0).toUpperCase()+txt.slice(1);
+  ta.value = was ? was.replace(/\s+$/,'')+(was.trim()?' ':'')+txt : txt;
+  ta.scrollTop=ta.scrollHeight;
+}
+
 /* ================= ЗАМЕТКИ ================= */
 /* список разделов — NSEC_DEF и secs('notes') выше, в блоке «Цели» */
 
@@ -1637,8 +1763,10 @@ function rNotes(){
   $('#nAdd').onclick=()=>{
     openSheet(`<h2>Заметка · ${secName('notes',nsec)}</h2>
       <textarea id="ntx" placeholder="Текст"></textarea>
+      ${micHTML()}
       <div class="row" style="margin-top:14px"><button class="btn" data-close style="flex:1">Отмена</button>
       <button class="btn primary" id="nok" style="flex:1">Добавить</button></div>`);
+    bindMic('#ntx');
     setTimeout(()=>$('#ntx').focus(),80);
     $('#nok').onclick=()=>{const t=$('#ntx').value.trim();if(!t)return toast('Пусто');
       DB.notes[nsec]=DB.notes[nsec]||[];DB.notes[nsec].unshift(t);save();closeSheet();rNotes()};
@@ -1651,13 +1779,16 @@ function editNote(i){
   const from=nsec, cur=(DB.notes[from]||[])[i];
   if(cur==null) return;
   openSheet(`<h2>Заметка</h2>
-    <textarea id="ntx" style="margin-bottom:12px">${esc(cur)}</textarea>
+    <textarea id="ntx">${esc(cur)}</textarea>
+    ${micHTML()}
+    <div style="margin-bottom:12px"></div>
     ${typeFields('notes',from)}
     <div class="row"><button class="btn danger" id="ndel">Удалить</button>
       <span class="spacer"></span>
       <button class="btn" data-close>Отмена</button>
       <button class="btn primary" id="nok">Сохранить</button></div>`);
   bindTypeFields('notes',from);
+  bindMic('#ntx');
   $('#ndel').onclick=()=>{
     if(!confirm('Удалить?'))return;
     DB.notes[from].splice(i,1); save(); closeSheet(); rNotes();
