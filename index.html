@@ -289,18 +289,20 @@ const ACT_GROUPS=[
    {k:'exp',    ic:'✨', lb:'Новый опыт'},
    {k:'places', ic:'🗺️', lb:'Новые места'},
    {k:'books',  ic:'📚', lb:'Книги'}]},
- {g:'Духовность', items:[
-   {k:'will',  ic:'🔥', lb:'Воля', hint:'сделал через сопротивление'},
-   {k:'medit', ic:'🧘', lb:'Медитация'}]},
  {g:'Общение', items:[
    {k:'friends', ic:'👥', lb:'Друзья'},
    {k:'people',  ic:'🙋', lb:'Новые люди'},
-   {k:'dating',  ic:'💐', lb:'Свидание'}]},
- {g:'Прочее', items:[
-   {k:'post', ic:'📣', lb:'Посты'},
-   {k:'sexn', ic:'❤️', lb:'Секс'},
+   {k:'touch',   ic:'🤝', lb:'Соц касание', hint:'короткий контакт: заговорил, поздоровался, написал'}]},
+ {g:'Отношения', items:[
+   {k:'dating', ic:'💐', lb:'Свидание'},
+   {k:'sexn',   ic:'❤️', lb:'Секс'},
    /* w0: отметка для наблюдения, в балл дня не идёт */
-   {k:'hand', ic:'❓', lb:'Руч', w0:true}]}
+   {k:'hand',   ic:'❓', lb:'Руч', w0:true}]},
+ {g:'Прочее', items:[
+   {k:'will',  ic:'🔥', lb:'Воля', hint:'сделал через сопротивление'},
+   {k:'medit', ic:'🧘', lb:'Медитация'},
+   {k:'post',  ic:'📣', lb:'Посты'},
+   {k:'money', ic:'💰', lb:'Деньги'}]}
 ];
 const ACTS=[{k:'sport', ic:'🏋️', lb:'Спорт'}, ...ACT_GROUPS.flatMap(g=>g.items)];
 
@@ -630,11 +632,17 @@ function day(d=cur){
 }
 const sortedDays=()=>Object.keys(DB.days).sort();
 
-/* оценка дня */
+/* Оценка дня — сумма всех кнопок: Спорт плюс каждая активность,
+   причём кнопка, нажатая трижды, даёт три балла. Не считается только
+   помеченная w0 («Руч»): это наблюдение, а не достижение.
+   w0 проверяем прямо здесь, а не только через CFG.weights: настройки
+   лежат отдельным ключом в localStorage и могут прийти из старой
+   версии, где нынешних кнопок ещё не было. */
 function score(d){
   const x=DB.days[d]; if(!x) return 0;
   let s=0;
   for(const a of ACTS){
+    if(a.w0) continue;
     const v = a.k==='sport' ? (x.sport?1:0) : (+x[a.k]||0);
     s+=v*(CFG.weights[a.k]??1);
   }
@@ -1041,7 +1049,8 @@ const hl=t=>esc(t).replace(/#([\wа-яёА-ЯЁ-]+)/g,'<span class="tag">#$1</sp
    поэтому списки живут в данных. Ниже — только то, с чего начинали. */
 const SCOPES_DEF=[['month','Месяц'],['year','2026'],['phuket','Пхукет'],['regular','Регулярные'],
   ['life','Глобальные'],['wish','100 хочу']];
-const NSEC_DEF=[['wins','Победы'],['books','Книги'],['insights','Инсайты'],
+const NSEC_DEF=[['ideas','Идеи и инсайты'],
+  ['wins','Победы'],['books','Книги'],['insights','Инсайты'],
   ['biz','Бизнес'],['self','Самооценка'],['grow','Изменения'],['talk','Общение'],
   ['zh_list','Ж'],['free','Свои']];
 /* kind: 'goals' | 'notes'. Возвращает живой массив пар [ключ, название]. */
@@ -1051,9 +1060,23 @@ function secs(kind){
   const gone=DB.secDel[kind]=DB.secDel[kind]||[];
   let L=DB.sec[kind];
   if(!Array.isArray(L)) L=DB.sec[kind]=def.map(p=>[...p]);
-  /* разделы, добавленные в новой версии приложения, дописываем в конец;
-     удалённые вручную не воскрешаем — их ключи помним в DB.secDel */
-  for(const[k,n]of def) if(!gone.includes(k)&&!L.some(s=>s[0]===k)) L.push([k,n]);
+  /* Разделы, появившиеся в новой версии приложения, добавляем на то место,
+     которое они занимают в списке по умолчанию: «Идеи и инсайты» задуманы
+     первыми, а простая дописька в конец ставила бы их последними.
+     Ориентир — ближайший сосед сверху, который у пользователя уже есть;
+     если такого нет, раздел встаёт в начало. Порядок, переставленный
+     вручную, при этом не ломается: трогаем только новые ключи.
+     Удалённые вручную не воскрешаем — их ключи помним в DB.secDel. */
+  def.forEach((pair,di)=>{
+    const[k,n]=pair;
+    if(gone.includes(k)||L.some(s=>s[0]===k)) return;
+    let at=0;
+    for(let i=di-1;i>=0;i--){
+      const p=L.findIndex(s=>s[0]===def[i][0]);
+      if(p>=0){ at=p+1; break }
+    }
+    L.splice(at,0,[k,n]);
+  });
   return L;
 }
 const SCOPES=()=>secs('goals');
@@ -1629,6 +1652,13 @@ function hintAuth(msg){
    ещё меняется на лету, класть его в поле нельзя. */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let micRec=null, micWant=false, micTa=null, micLast=0;
+/* Индексы уже вставленных кусков текущей сессии распознавания.
+   Без этого речь дублируется: браузер отдаёт весь накопленный список
+   результатов заново, а `resultIndex` не всегда указывает на первый
+   изменившийся — одна и та же фраза приходит по нескольку раз.
+   Список сбрасывается на каждом старте: после перезапуска нумерация
+   начинается с нуля и старые номера означали бы уже другой текст. */
+let micSeen=new Set();
 
 /* Разметка ряда с кнопкой. Кладётся сразу под textarea. */
 function micHTML(){
@@ -1664,13 +1694,20 @@ function micStart(ta){
   const r=new SR();
   r.lang='ru-RU'; r.continuous=true; r.interimResults=true; r.maxAlternatives=1;
 
-  r.onstart=()=>{micLabel(true); micNote('Слушаю. Говорите, текст добавится в поле.')};
+  /* нумерация результатов у новой сессии своя — старые отметки не годятся */
+  r.onstart=()=>{micSeen=new Set(); micLabel(true);
+    micNote('Слушаю. Говорите, текст добавится в поле.')};
 
   r.onresult=e=>{
     let fin='', live='';
-    for(let i=e.resultIndex;i<e.results.length;i++){
+    /* идём по всему списку, а не с e.resultIndex: считаться должен
+       не «что пришло сейчас», а «что ещё не вставлено» */
+    for(let i=0;i<e.results.length;i++){
       const t=e.results[i][0].transcript;
-      if(e.results[i].isFinal) fin+=t; else live+=t;
+      if(e.results[i].isFinal){
+        if(micSeen.has(i)) continue;   // этот кусок уже в поле
+        micSeen.add(i); fin+=t;
+      } else live+=t;
     }
     if(fin.trim()) micAppend(micTa,fin.trim());
     micNote(live.trim()?`<span class="mic-live">${esc(live.trim())}</span>`
@@ -1696,6 +1733,9 @@ function micStart(ta){
        иначе при отказе в доступе получим бесконечный цикл. */
     if(micWant && Date.now()-micLast>1000){
       micLast=Date.now();
+      /* сброс и здесь, не только в onstart: если браузер почему-то
+         не пришлёт start, старые номера съели бы первые фразы */
+      micSeen=new Set();
       try{ r.start(); return; }catch(err){}
     }
     micRec=null; micWant=false; micLabel(false);
@@ -1710,7 +1750,7 @@ function micStart(ta){
 function micStop(){
   micWant=false;
   if(micRec){ try{micRec.stop()}catch(e){} }
-  micRec=null; micLabel(false);
+  micRec=null; micSeen=new Set(); micLabel(false);
 }
 
 /* Дописывание: текущее значение поля читается заново, поэтому
