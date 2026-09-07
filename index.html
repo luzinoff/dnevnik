@@ -1695,9 +1695,14 @@ let micBase='', micParts=[], micLive='';
    означает правку руками. null — пока микрофон не трогали */
 let micPrev=null;
 
-/* Разметка ряда с кнопкой. Кладётся сразу под textarea. */
-function micHTML(){
+/* Разметка ряда с кнопкой. Кладётся сразу под textarea.
+   btn=false — только строка состояния, без кнопки: так сделано в окне
+   новой заметки, куда микрофон включён снаружи и вторая кнопка была бы
+   лишней. Гасит запись тогда закрытие окна (`micStop()` в `closeSheet()`)
+   или сохранение заметки. */
+function micHTML(btn=true){
   if(!SR) return `<div class="mic-row"><span class="mic-note">Голосовой ввод доступен в Chrome, Edge и Safari</span></div>`;
+  if(!btn) return `<div class="mic-row"><span class="mic-note" id="micNote"></span></div>`;
   return `<div class="mic-row">
     <button type="button" class="btn mic" id="micBtn">
       <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/>
@@ -1722,6 +1727,10 @@ function micLabel(on){
   if(b) b.classList.toggle('rec',on);
   if(l) l.textContent=on?'Стоп':'Голос';
 }
+/* Подсказка на время слушания. Без кнопки «Стоп» в окне надо сказать,
+   чем запись заканчивается, иначе неясно, слушает ещё или нет. */
+const micListen=()=>$('#micBtn')?'Слушаю. Говорите, текст добавится в поле.'
+                                :'🎙 Слушаю. Говорите — текст добавится в поле. «Добавить» завершит запись.';
 
 function micStart(ta){
   if(micRec) return;
@@ -1730,7 +1739,7 @@ function micStart(ta){
   r.lang='ru-RU'; r.continuous=true; r.interimResults=true; r.maxAlternatives=1;
 
   r.onstart=()=>{micLabel(true);
-    micNote('Слушаю. Говорите, текст добавится в поле.')};
+    micNote(micListen())};
 
   r.onresult=e=>{
     /* Список результатов пересобираем целиком: он и есть полная картина
@@ -1743,8 +1752,7 @@ function micStart(ta){
     }
     micParts=parts; micLive=live.trim();
     micPaint();
-    micNote(micLive?`<span class="mic-live">${esc(micLive)}</span>`
-                   :'Слушаю. Говорите, текст добавится в поле.');
+    micNote(micLive?`<span class="mic-live">${esc(micLive)}</span>`:micListen());
   };
 
   r.onerror=e=>{
@@ -1877,6 +1885,9 @@ function rNotes(){
     <div class="small muted" style="margin:2px 2px 0">Тап по заметке — правка и перенос, ⚙ — управление разделами</div>
     <!-- «+ Добавить» отделено от ряда разделов подсказкой: рядом с «⚙» их путали -->
     <div class="row" style="margin:11px 2px"><button class="btn sm" id="nAdd">+ Добавить заметку</button>
+    ${SR?`<button class="btn sm mic" id="nVoice" title="Новая заметка голосом">
+      <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/>
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Голосом</button>`:''}
     ${zhOpen?'<span class="spacer"></span><button class="btn sm ghost" id="nLock">Скрыть</button>':''}</div>
   ${list.length?`<div class="card">${list.map((t,i)=>
     `<div class="row" style="align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line-soft)">
@@ -1896,17 +1907,31 @@ function rNotes(){
     if(!confirm('Удалить?'))return;
     DB.notes[nsec].splice(+b.dataset.i,1);save();rNotes()});
   $$('.nedit').forEach(b=>b.onclick=()=>editNote(+b.dataset.i));
-  $('#nAdd').onclick=()=>{
-    openSheet(`<h2>Заметка · ${secName('notes',nsec)}</h2>
-      <textarea id="ntx" placeholder="Текст"></textarea>
-      ${micHTML()}
-      <div class="row" style="margin-top:14px"><button class="btn" data-close style="flex:1">Отмена</button>
-      <button class="btn primary" id="nok" style="flex:1">Добавить</button></div>`);
-    bindMic('#ntx');
-    setTimeout(()=>$('#ntx').focus(),80);
-    $('#nok').onclick=()=>{const t=$('#ntx').value.trim();if(!t)return toast('Пусто');
-      DB.notes[nsec]=DB.notes[nsec]||[];DB.notes[nsec].unshift(t);save();closeSheet();rNotes()};
-  };
+  $('#nAdd').onclick=()=>addNote(false);
+  const nv=$('#nVoice'); if(nv) nv.onclick=()=>addNote(true);
+}
+
+/* Окно новой заметки. Двери в него две, и режим задаётся ими:
+   «+ Добавить заметку» — просто поле, «Голосом» — поле с уже включённым
+   микрофоном. Своей кнопки микрофона здесь нет: выбор сделан снаружи,
+   и вторая кнопка на том же экране только сбивала бы. Остаётся строка
+   состояния — видно, что запись идёт и что распознаётся сейчас.
+   Запись глушит закрытие окна (`micStop()` внутри `closeSheet()`),
+   то есть и «Отмена», и «Добавить».
+
+   Микрофон запускается синхронно, внутри обработчика клика: браузер
+   даёт к нему доступ только по жесту пользователя, а через setTimeout
+   жест уже потерян. */
+function addNote(voice){
+  openSheet(`<h2>Заметка · ${secName('notes',nsec)}</h2>
+    <textarea id="ntx" placeholder="Текст"></textarea>
+    ${voice?micHTML(false):''}
+    <div class="row" style="margin-top:14px"><button class="btn" data-close style="flex:1">Отмена</button>
+    <button class="btn primary" id="nok" style="flex:1">Добавить</button></div>`);
+  if(voice && SR) micStart($('#ntx'));
+  setTimeout(()=>$('#ntx').focus(),80);
+  $('#nok').onclick=()=>{const t=$('#ntx').value.trim();if(!t)return toast('Пусто');
+    DB.notes[nsec]=DB.notes[nsec]||[];DB.notes[nsec].unshift(t);save();closeSheet();rNotes()};
 }
 /* Правка заметки: текст, тип и раздел в одном окне. Смена раздела —
    это перенос: запись уходит из текущего списка в начало выбранного.
