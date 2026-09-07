@@ -506,9 +506,10 @@ function load(){
   let raw=null;
   try{raw=localStorage.getItem(LS)}catch(e){}
   if(raw){ try{DB=Object.assign(BLANK(),JSON.parse(raw));
-    const need = DB.suppV!==SUPP_V || !(DB.actsV>=ACTS_V) || !(DB.goalsV>=GOALS_V);
+    let need = DB.suppV!==SUPP_V || !(DB.actsV>=ACTS_V) || !(DB.goalsV>=GOALS_V);
     if(DB.suppV!==SUPP_V) migrateSupps();
     migrateActs(); migrateGoals();
+    if(migrateClean()) need=true;
     if(need) localStorage.setItem(LS,JSON.stringify(DB));
   }catch(e){} }
   else { seedFromFile(); }
@@ -523,10 +524,21 @@ function seedFromFile(){
     const el=$('#seed');
     if(!el||!el.textContent.trim()){ migrateSupps(); return } // опубликованная версия: данные придут из облака
     const s=JSON.parse(el.textContent);
-    DB.days=s.days||{}; DB.notes=s.notes||{}; DB.supps=(s.suppDict||[]).map(n=>({id:uid(),name:n,slot:'day'}));
-    DB.goals=flattenGoals(s.goals||{});
-    migrateSupps(); migrateActs(); migrateGoals();
-    DB.updated=Date.now();
+    /* В seed теперь лежит обычная выгрузка «Экспорт JSON» — там уже готовый
+       формат: плоский массив целей, справочник добавок объектами, разделы.
+       Первый, рукописный формат (suppDict и цели, разложенные по месяцам)
+       разбираем по-прежнему: такой файл мог остаться у кого-то на руках. */
+    if(Array.isArray(s.goals)){
+      DB=Object.assign(BLANK(),s);
+    }else{
+      DB.days=s.days||{}; DB.notes=s.notes||{}; DB.supps=(s.suppDict||[]).map(n=>({id:uid(),name:n,slot:'day'}));
+      DB.goals=flattenGoals(s.goals||{});
+    }
+    if(DB.suppV!==SUPP_V) migrateSupps();
+    migrateActs(); migrateGoals(); migrateClean();
+    /* Время правки берём из выгрузки, если оно там есть: иначе свежая копия
+       выглядит новее облачной и синхронизация не подтянет более поздние дни. */
+    if(!DB.updated) DB.updated=Date.now();
     localStorage.setItem(LS,JSON.stringify(DB));
   }catch(e){ console.warn('seed',e); }
 }
@@ -618,6 +630,20 @@ function migrateGoals(){
   }
   delete DB.notes.wish;
   DB.goalsV=GOALS_V;
+}
+/* Разделы, вычеркнутые из списка вместе с содержимым.
+   Записи такого раздела в приложении не видны, но продолжают ездить
+   в выгрузках и в облаке, поэтому вычищаем их при каждой загрузке.
+   Возвращает true, если что-то удалили — вызывающий сохранит результат. */
+const SEC_DROP=['zh_thoughts'];
+function migrateClean(){
+  let hit=false;
+  for(const k of SEC_DROP){
+    if(DB.notes && k in DB.notes){ delete DB.notes[k]; hit=true }
+    const L=(DB.sec&&DB.sec.notes)||null;
+    if(L){ const i=L.findIndex(s=>s[0]===k); if(i>=0){ L.splice(i,1); hit=true } }
+  }
+  return hit;
 }
 function save(push=true){
   DB.updated=Date.now();
@@ -737,7 +763,7 @@ async function pull(silent){
     if(j&&(j.updated||0)>(DB.updated||0)){
       DB=Object.assign(BLANK(),j);
       if(DB.suppV!==SUPP_V) migrateSupps();
-      migrateActs(); migrateGoals(); initFilters();
+      migrateActs(); migrateGoals(); migrateClean(); initFilters();
       localStorage.setItem(LS,JSON.stringify(DB)); render();
       if(!silent)toast('Загружено из облака');
     } else if(!silent) toast('Локальные данные не старее облачных');
@@ -1572,7 +1598,7 @@ function importJSON(){
       if(!confirm('Заменить текущие данные данными из файла?'))return;
       DB=Object.assign(BLANK(),j);
       if(DB.suppV!==SUPP_V) migrateSupps();
-      migrateActs(); migrateGoals(); initFilters();
+      migrateActs(); migrateGoals(); migrateClean(); initFilters();
       save();render();toast('Импортировано');
     }catch(e){toast('Ошибка: '+e.message)}};
     r.readAsText(f)};
