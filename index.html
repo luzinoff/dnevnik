@@ -1652,13 +1652,22 @@ function hintAuth(msg){
    ещё меняется на лету, класть его в поле нельзя. */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let micRec=null, micWant=false, micTa=null, micLast=0;
-/* Индексы уже вставленных кусков текущей сессии распознавания.
-   Без этого речь дублируется: браузер отдаёт весь накопленный список
-   результатов заново, а `resultIndex` не всегда указывает на первый
-   изменившийся — одна и та же фраза приходит по нескольку раз.
-   Список сбрасывается на каждом старте: после перезапуска нумерация
-   начинается с нуля и старые номера означали бы уже другой текст. */
-let micSeen=new Set();
+/* ---- как собирается надиктованное ----
+   Наивное «дописать пришедший кусок в конец поля» даёт кашу вида
+   «сходить · сходить в · сходить в горы»: движок уточняет фразу
+   по ходу речи и присылает её целиком заново, каждый раз помечая
+   готовой и каждый раз под новым номером. Отсеивать повторы
+   по номеру бесполезно — номера разные, текст тот же.
+
+   Поэтому поле не дописывается, а пересобирается. Приложение помнит
+   micBase — то, что было в поле до включения микрофона, — и список
+   кусков micParts. На каждое событие хвост после базы переписывается
+   заново, так что уточнение просто заменяет предыдущий вариант
+   вместо того, чтобы лечь рядом с ним. */
+let micBase='', micParts=[], micLive='';
+/* последнее значение, которое поле получило от нас: расхождение
+   означает правку руками. null — пока микрофон не трогали */
+let micPrev=null;
 
 /* Разметка ряда с кнопкой. Кладётся сразу под textarea. */
 function micHTML(){
@@ -1694,24 +1703,22 @@ function micStart(ta){
   const r=new SR();
   r.lang='ru-RU'; r.continuous=true; r.interimResults=true; r.maxAlternatives=1;
 
-  /* нумерация результатов у новой сессии своя — старые отметки не годятся */
-  r.onstart=()=>{micSeen=new Set(); micLabel(true);
+  r.onstart=()=>{micLabel(true);
     micNote('Слушаю. Говорите, текст добавится в поле.')};
 
   r.onresult=e=>{
-    let fin='', live='';
-    /* идём по всему списку, а не с e.resultIndex: считаться должен
-       не «что пришло сейчас», а «что ещё не вставлено» */
+    /* Список результатов пересобираем целиком: он и есть полная картина
+       сказанного за сессию. Готовые куски идут в micParts, незавершённый
+       показывается серым, но в поле не пишется. */
+    const parts=[]; let live='';
     for(let i=0;i<e.results.length;i++){
-      const t=e.results[i][0].transcript;
-      if(e.results[i].isFinal){
-        if(micSeen.has(i)) continue;   // этот кусок уже в поле
-        micSeen.add(i); fin+=t;
-      } else live+=t;
+      const t=e.results[i][0].transcript.trim(); if(!t) continue;
+      if(e.results[i].isFinal) parts.push(t); else live+=' '+t;
     }
-    if(fin.trim()) micAppend(micTa,fin.trim());
-    micNote(live.trim()?`<span class="mic-live">${esc(live.trim())}</span>`
-                      :'Слушаю. Говорите, текст добавится в поле.');
+    micParts=parts; micLive=live.trim();
+    micPaint();
+    micNote(micLive?`<span class="mic-live">${esc(micLive)}</span>`
+                   :'Слушаю. Говорите, текст добавится в поле.');
   };
 
   r.onerror=e=>{
@@ -1730,19 +1737,21 @@ function micStart(ta){
   r.onend=()=>{
     /* Chrome сам обрывает continuous после тишины. Пока пользователь
        не нажал «Стоп» — поднимаем заново, но не чаще раза в секунду,
-       иначе при отказе в доступе получим бесконечный цикл. */
+       иначе при отказе в доступе получим бесконечный цикл.
+       Перед перезапуском накопленное закрепляем в базе: у новой сессии
+       список результатов свой, начинается с пустого, и без этого
+       сказанное до паузы стёрлось бы. */
     if(micWant && Date.now()-micLast>1000){
-      micLast=Date.now();
-      /* сброс и здесь, не только в onstart: если браузер почему-то
-         не пришлёт start, старые номера съели бы первые фразы */
-      micSeen=new Set();
+      micLast=Date.now(); micFold();
       try{ r.start(); return; }catch(err){}
     }
-    micRec=null; micWant=false; micLabel(false);
+    micRec=null; micWant=false; micFold(); micLabel(false);
     const n=$('#micNote'); if(n&&!n.classList.contains('err')) micNote('');
   };
 
   micRec=r; micWant=true; micLast=Date.now();
+  /* точка отсчёта: всё, что было в поле до включения микрофона */
+  micBase=ta.value; micParts=[]; micLive=''; micPrev=ta.value;
   try{ r.start(); }
   catch(err){ micRec=null; micWant=false; micLabel(false); micNote('Не удалось включить микрофон.',true) }
 }
@@ -1750,17 +1759,78 @@ function micStart(ta){
 function micStop(){
   micWant=false;
   if(micRec){ try{micRec.stop()}catch(e){} }
-  micRec=null; micSeen=new Set(); micLabel(false);
+  micRec=null; micFold(); micPrev=null; micLabel(false);
 }
 
-/* Дописывание: текущее значение поля читается заново, поэтому
-   правку руками во время диктовки ничего не затирает. */
-function micAppend(ta,txt){
+/* Куски текущей сессии переходят в базу: дальше они уже неизменны. */
+function micFold(){
+  micBase=micText(); micParts=[]; micLive='';
+}
+
+/* Склейка базы и распознанного.
+
+   Движок присылает фразу не один раз, а по мере уточнения, и каждый
+   вариант помечает готовым: «Что такое» → «Что такое вин» →
+   «Что такое winhome» → «Что такое winhome spearl.by». Причём он не
+   только продлевает фразу, но и переписывает уже сказанные слова,
+   а иногда откатывается к более короткому варианту. Поэтому проверки
+   «новое начинается со старого» не хватает — сравниваем по словам
+   и в обе стороны, оставляя вариант подлиннее.
+
+   Совпадения одного слова мало: «купить хлеб» и «купить молоко» —
+   разные мысли, их надо сохранить обе. Обратная сторона правила:
+   дважды подряд сказанная одна и та же фраза схлопнется в одну.
+   Это осознанный размен — настоящие повторы подряд в речи редки,
+   а вот дубли от движка сыпались постоянно. */
+function micText(){
+  const out=[];
+  for(const p of micParts){
+    const i=out.length-1;
+    if(i>=0 && micSame(out[i],p)){
+      /* тот же кусок в другой редакции — держим наиболее полную */
+      if(micWords(p).length>micWords(out[i]).length) out[i]=p;
+      continue;
+    }
+    out.push(p);
+  }
+  return micJoin(micBase,out.join(' '));
+}
+/* два куска — варианты одной фразы? */
+function micSame(a,b){
+  const A=micWords(a), B=micWords(b);
+  if(!A.length||!B.length) return false;
+  const min=Math.min(A.length,B.length);
+  let n=0; while(n<min && A[n]===B[n]) n++;
+  /* короткий целиком лёг в начало длинного — вариант одной фразы;
+     разошлось последнее слово — тоже, но лишь когда до него совпало
+     не меньше двух: иначе это самостоятельная мысль */
+  return n>=min || (n>=min-1 && n>=2);
+}
+/* для сравнения важны слова, а не регистр и знаки препинания */
+const micWords=s=>s.toLowerCase().replace(/[^\wа-яё]+/gi,' ').trim().split(/\s+/).filter(Boolean);
+
+/* Соединение базы с новым текстом: пробел между ними и заглавная буква,
+   если предыдущая фраза закончена. */
+function micJoin(base,add){
+  if(!add) return base;
+  const b=base.replace(/\s+$/,''), tail=b.trim().slice(-1);
+  if(!b.trim()||'.!?'.includes(tail)) add=add.charAt(0).toUpperCase()+add.slice(1);
+  return b.trim()? b+' '+add : add;
+}
+
+/* Перерисовка поля. Если между событиями пользователь правил текст
+   руками, его версия становится новой базой, а распознавание
+   перезапускается — иначе движок пришлёт всю фразу заново и она
+   ляжет поверх правки. */
+function micPaint(){
+  const ta=micTa;
   if(!ta||!ta.isConnected) return micStop();
-  const was=ta.value, tail=was.trim().slice(-1);
-  /* после точки, восклицательного и вопросительного — новая фраза с большой буквы */
-  if(!was.trim()||'.!?'.includes(tail)) txt=txt.charAt(0).toUpperCase()+txt.slice(1);
-  ta.value = was ? was.replace(/\s+$/,'')+(was.trim()?' ':'')+txt : txt;
+  if(micPrev!==null && ta.value!==micPrev){
+    micBase=ta.value; micParts=[]; micLive=''; micPrev=ta.value;
+    if(micRec){ micLast=0; try{micRec.stop()}catch(e){} }  // onend поднимет заново
+    return;
+  }
+  ta.value=micPrev=micText();
   ta.scrollTop=ta.scrollHeight;
 }
 
