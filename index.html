@@ -1427,8 +1427,12 @@ function makePublic(){
   }catch(e){ toast('Не получилось: '+e.message) }
 }
 /* ================= ИМПОРТ ДАННЫХ С БРАСЛЕТА =================
-   Выгрузка Zepp Life, разобранная на четыре CSV: сон, пульс, шаги, тренировки.
-   Тип файла определяем по заголовку, а не по имени — файлы можно переименовать. */
+   Оригинальная выгрузка Mi Fitness. Нужны исходные CSV с двумя окончаниями:
+   MiFitness_hlth_center_aggregated_fitness_data.csv — сон, пульс и шаги;
+   MiFitness_hlth_center_sport_record.csv — сводные тренировки.
+   Начальная часть имени (дата и номер аккаунта) меняется при каждой выгрузке,
+   но окончание и заголовки должны остаться заводскими. Это намеренно строгая
+   проверка: отредактированный Excel-файл или чужой CSV не попадёт в дневник. */
 function parseCSV(txt){
   const t=txt.replace(/^﻿/,'');
   const rows=[]; let row=[], f='', q=false;
@@ -1454,14 +1458,67 @@ const isDate=s=>/^\d{4}-\d{2}-\d{2}$/.test(s||'');
 /* «01:13:00» → «01:13»; секунды в дневнике не нужны */
 const hhmm=s=>{const m=/^(\d{1,2}):(\d{2})/.exec(String(s||'').trim());return m?pad(+m[1])+':'+m[2]:null};
 
-function bandRows(rows){
+/* Строго узнаёт два оригинальных формата Mi Fitness. Возвращает формат,
+   а не тип показателя: aggregated содержит сразу сон, пульс и шаги.
+   Старую выгрузку Zepp Life больше не принимаем — она была промежуточной,
+   отредактированной копией, а не первичными данными прибора. */
+const MF_AGG='MiFitness_hlth_center_aggregated_fitness_data.csv';
+const MF_SPORT='MiFitness_hlth_center_sport_record.csv';
+function miFitnessKind(file,rows){
   const h=Object.keys(rows[0]||{});
-  /* тренировки проверяем первыми: там тоже есть колонка steps */
-  if(h.includes('activity')||h.includes('sport_type')) return 'workout';
-  if(h.includes('total_duration_min')) return 'sleep';
-  if(h.includes('resting_hr')) return 'hr';
-  if(h.includes('steps')) return 'steps';
+  const name=file.name||'';
+  if(name.endsWith(MF_AGG)&&['Uid','Sid','Tag','Key','Time','Value','UpdateTime'].every(x=>h.includes(x))) return 'mfAgg';
+  if(name.endsWith(MF_SPORT)&&['Uid','Sid','Key','Time','Category','Value','UpdateTime'].every(x=>h.includes(x))) return 'mfSport';
   return null;
+}
+const mfDate=t=>{
+  const n=Number(t); if(!Number.isFinite(n)||n<=0) return null;
+  /* Time в Mi Fitness — Unix-секунды полуночи местного дня. Форматируем
+     в локальной зоне устройства, а не через UTC: иначе ночные записи могут
+     уехать на соседнюю дату. */
+  const d=new Date(n*1000);
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+};
+const mfJSON=s=>{try{const x=JSON.parse(s);return x&&typeof x==='object'?x:null}catch(e){return null}};
+function miFitnessRows(rows,kind){
+  const out=[];
+  for(const r of rows){
+    const v=mfJSON(r.Value); if(!v) continue;
+    if(kind==='mfAgg'){
+      const d=mfDate(r.Time); if(!d||!['sleep','heart_rate','steps'].includes(r.Key)) continue;
+      /* в файле есть технические дубли {has_data:true}; у них нет чисел,
+         поэтому берём лишь полноценную сводную строку. */
+      if(r.Key==='sleep'&&num(v.total_duration)>0){
+        const seg=Array.isArray(v.segment_details)?v.segment_details[0]:null;
+        /* У спортивных часов timezone — смещение от UTC в четвертях часа
+           (12 = UTC+3, 28 = UTC+7), но у старых строк оно порой неверно.
+           Наилучший источник — локальная часовая зона браузера, когда
+           дневник открыт у владельца данных; берём её и время не «плывёт»
+           между старым и новым форматом. */
+        const localTime=t=>Number.isFinite(Number(t))?new Date(Number(t)*1000).toTimeString().slice(0,5):'';
+        out.push({kind:'sleep',date:d,total_duration_min:v.total_duration,
+          bedtime_local:seg?localTime(seg.bedtime):'',
+          wakeup_local:seg?localTime(seg.wake_up_time):'',
+          sleep_score:v.sleep_score,deep_min:v.sleep_deep_duration,rem_min:v.sleep_rem_duration});
+      }
+      else if(r.Key==='heart_rate'&&num(v.min_hr)>0) out.push({kind:'hr',date:d,min_hr:v.min_hr,resting_hr:v.avg_rhr});
+      else if(r.Key==='steps'&&num(v.steps)>0) out.push({kind:'steps',date:d,steps:v.steps});
+    }
+    else if(kind==='mfSport'){
+      /* Key — технический, но точный тип (outdoor_running, pool_swimming);
+         Category иногда только общее running/swimming, и с ним потерялась бы
+         раскладка в WK_MAP. */
+      const d=mfDate(v.start_time??r.Time), a=String(r.Key||r.Category||'').trim();
+      /* В выгрузке встретилась случайно начатая и сразу остановленная
+         «тренировка» на 8 секунд с нулевой дистанцией и калориями. Её не
+         считаем спортом. Короткие, но реальные занятия с дистанцией или
+         калориями оставляем. */
+      if(!d||!a||num(v.duration)<=0||
+         (num(v.duration)<60&&!(num(v.distance)>0)&&!(num(v.calories)>0))) continue;
+      out.push({kind:'workout',date:d,activity:a,distance_km:num(v.distance)>0?num(v.distance)/1000:null});
+    }
+  }
+  return out;
 }
 /* ---- тренировки с браслета ----
    Прибор знает только тип занятия, разбивки по подходам в выгрузке нет.
@@ -1556,7 +1613,25 @@ function mergeBand(kind,rows,st){
     if(touched) st.days.add(d);
   }
 }
+/* Сначала напоминаем точные окончания имён. Диалог выбора файла сам не
+   умеет показать такую памятку без риска спрятать её под проводником. */
 function importBand(){
+  openSheet(`<h2>Импорт из Mi Fitness</h2>
+    <div class="small" style="color:var(--ink-2);line-height:1.7">
+      Выберите только <b>оригинальные</b> CSV из выгрузки Mi Fitness — не
+      открытые и не пересохранённые в Excel.<br><br>
+      <code>…${MF_AGG}</code><br>
+      — сон, пульс и шаги.<br><br>
+      <code>…${MF_SPORT}</code><br>
+      — сводные тренировки.<br><br>
+      Многоточие — дата и номер устройства, они у новой выгрузки меняются.
+      Другие файлы приложение намеренно пропустит.
+    </div>
+    <div class="row" style="margin-top:16px"><button class="btn" data-close style="flex:1">Отмена</button>
+    <button class="btn primary" id="imPick" style="flex:1">Выбрать файлы</button></div>`);
+  $('#imPick').onclick=chooseBand;
+}
+function chooseBand(){
   const i=document.createElement('input');
   i.type='file'; i.accept='.csv,text/csv'; i.multiple=true;
   i.onchange=async()=>{
@@ -1565,10 +1640,13 @@ function importBand(){
     for(const f of files){
       try{
         const rows=parseCSV(await f.text());
-        const kind=rows.length?bandRows(rows):null;
-        if(!kind){ st.skipped.push(f.name+' (не распознан)'); continue }
-        if(kind==='workout') mergeWorkouts(rows,st); else mergeBand(kind,rows,st);
-        st.files.push(`${f.name} — ${({sleep:'сон',hr:'пульс',steps:'шаги',workout:'тренировки'})[kind]}, ${rows.length} строк`);
+        const kind=rows.length?miFitnessKind(f,rows):null;
+        if(!kind){ st.skipped.push(f.name+' — не оригинальный CSV Mi Fitness'); continue }
+        const data=miFitnessRows(rows,kind);
+        if(kind==='mfSport') mergeWorkouts(data,st);
+        else for(const k of ['sleep','hr','steps']) mergeBand(k,data.filter(x=>x.kind===k),st);
+        const label=kind==='mfAgg'?'сон, пульс и шаги':'тренировки';
+        st.files.push(`${f.name} — ${label}, ${data.length} записей`);
       }catch(e){ st.skipped.push(f.name+' — ошибка чтения') }
     }
     if(st.days.size){ migrateActs(); save(); render() }
@@ -1577,8 +1655,14 @@ function importBand(){
       ${st.files.length?`Обработано:<br>${st.files.map(esc).join('<br>')}<br><br>`:''}
       Обновлено дней: <b>${st.days.size}</b>.
       ${st.skipped.length?`<br><br>Пропущено:<br>${st.skipped.map(esc).join('<br>')}`:''}
-      ${st.days.size?`<br><br>Сон, пульс, шаги и оценка сна взяты из выгрузки — они точнее записанных по памяти.
-      «Пульс мин.» — минимальный за сутки, как вы и вели; пульс покоя лежит отдельным полем.
+      <br><br><b>Загружайте только оригинальную выгрузку Mi Fitness:</b><br>
+      — файл, оканчивающийся на <code>${MF_AGG}</code> — сон, пульс, шаги;<br>
+      — файл, оканчивающийся на <code>${MF_SPORT}</code> — тренировки.<br>
+      Часть имени перед <code>MiFitness</code> (дата и номер) может отличаться.
+      Не открывайте и не пересохраняйте CSV в Excel: изменённые или чужие файлы
+      приложение намеренно пропускает.
+      ${st.days.size?`<br><br>Сон, пульс, шаги и оценка сна взяты из первичной выгрузки — они точнее записанных по памяти.
+      «Пульс мин.» — минимальный за сутки; пульс покоя лежит отдельным полем.
       Тренировки: бег и ходьба попадают в «Кардио» с километражем, велосипед — туда же словом,
       силовая, плавание и единоборства — в «Прочее». Ваш текст в этих полях сохраняется,
       запись браслета дописывается через « · » и заменяется при повторном импорте.`:''}
