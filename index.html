@@ -483,7 +483,10 @@ const canonSupp=n=>{
 const SUPP_V=7;
 
 const ACT_W=()=>Object.fromEntries(ACTS.map(a=>[a.k,a.w0?0:1]));
-const DEF_CFG={theme:'light',clientId:'',fileId:'',everSignedIn:false,lastSync:0,autoSync:true,
+/* cloudSeen — время правки облачного файла, каким мы его видели в последний
+   раз. По нему push() понимает, что между нашей загрузкой и отправкой
+   в облако написало другое устройство, и не затирает его молча. */
+const DEF_CFG={theme:'light',clientId:'',fileId:'',cloudSeen:'',everSignedIn:false,lastSync:0,autoSync:true,
   weights:ACT_W(), suppOrder:[], hidden:[]};
 
 /* sec — списки разделов целей и заметок, secDel — удалённые вручную ключи */
@@ -680,6 +683,7 @@ function score(d){
    (appDataFolder) — не мешается среди файлов и виден только этой странице. */
 const GFILE='dnevnik.json', GSCOPE='https://www.googleapis.com/auth/drive.appdata';
 let st=null,syncing=false,tok=null,tokExp=0,gis=null;
+const fmtTS=t=>t?new Date(+t).toLocaleString('ru',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
 
 function dot(s,t){const e=$('#syncDot');e.className='sync-dot'+(s?' '+s:'');e.title=t||'Синхронизация'}
 function queuePush(){clearTimeout(st);st=setTimeout(()=>push().catch(()=>{}),2500)}
@@ -733,42 +737,70 @@ async function findFile(){
   if(j.files?.length){CFG.fileId=j.files[0].id;saveCfg();return CFG.fileId}
   return null;
 }
-async function push(){
+/* Время правки облачного файла — дешёвый запрос без самих данных.
+   Нужен, чтобы отправка не затирала чужие записи вслепую. */
+async function cloudTime(id){
+  try{
+    const r=await gapi('https://www.googleapis.com/drive/v3/files/'+id+'?fields=modifiedTime');
+    return (await r.json()).modifiedTime||'';
+  }catch(e){ return '' }
+}
+/* force=true — «отправить поверх»: пользователь уже видел предупреждение */
+async function push(force){
   if(syncing||!CFG.clientId) return;
   syncing=true;dot('busy','Отправка…');
   try{
     const id=await findFile();
+    /* Между нашей последней загрузкой и этой отправкой в облако мог написать
+       телефон. Молча затирать его нельзя: это потеря записей без следа. */
+    if(id&&!force&&CFG.cloudSeen){
+      const t=await cloudTime(id);
+      if(t&&t>CFG.cloudSeen){
+        dot('err','В облаке более свежая копия');
+        throw new Error('CONFLICT|'+t);
+      }
+    }
     const meta={name:GFILE,mimeType:'application/json',...(id?{}:{parents:['appDataFolder']})};
     const bnd='b'+uid();
     const body=`--${bnd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`+
       JSON.stringify(meta)+`\r\n--${bnd}\r\nContent-Type: application/json\r\n\r\n`+
       JSON.stringify(DB)+`\r\n--${bnd}--`;
     const r=await gapi('https://www.googleapis.com/upload/drive/v3/files'+
-      (id?'/'+id:'')+'?uploadType=multipart&fields=id',
+      (id?'/'+id:'')+'?uploadType=multipart&fields=id,modifiedTime',
       {method:id?'PATCH':'POST',headers:{'Content-Type':'multipart/related; boundary='+bnd},body});
-    const j=await r.json(); if(j.id){CFG.fileId=j.id;saveCfg()}
+    const j=await r.json(); if(j.id)CFG.fileId=j.id;
+    if(j.modifiedTime)CFG.cloudSeen=j.modifiedTime;
     CFG.lastSync=Date.now();saveCfg();
     dot('ok','Сохранено '+new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}));
-  }catch(e){dot('err','Ошибка: '+e.message);throw e}
+  }catch(e){if(!/^CONFLICT\|/.test(e.message))dot('err','Ошибка: '+e.message);throw e}
   finally{syncing=false}
 }
-async function pull(silent){
+/* Возвращает, что именно произошло: 'got' | 'same' | 'local' | 'empty'.
+   Раньше два последних случая выглядели одинаково — «прошло без ошибок», —
+   и отсюда бралось ощущение, что синхронизация работает, а данных нет. */
+async function pull(silent,force){
   if(!CFG.clientId){if(!silent)toast('Сначала укажите Client ID');return}
   if(silent&&!CFG.everSignedIn) return;
   syncing=true;dot('busy','Загрузка…');
   try{
     const id=await findFile();
-    if(!id){dot('ok','В облаке пока пусто'); if(!silent)toast('В облаке пока пусто');return}
+    if(!id){dot('ok','В облаке пока пусто'); if(!silent)toast('В облаке пока пусто');return 'empty'}
     const j=await (await gapi('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media')).json();
-    if(j&&(j.updated||0)>(DB.updated||0)){
+    CFG.cloudSeen=await cloudTime(id);
+    const cu=j?.updated||0, lu=DB.updated||0;
+    let res='same';
+    if(cu>lu||force){
       DB=Object.assign(BLANK(),j);
       if(DB.suppV!==SUPP_V) migrateSupps();
       migrateActs(); migrateGoals(); migrateClean(); initFilters();
       localStorage.setItem(LS,JSON.stringify(DB)); render();
-      if(!silent)toast('Загружено из облака');
-    } else if(!silent) toast('Локальные данные не старее облачных');
+      res='got'; if(!silent)toast('Загружено из облака');
+    } else if(cu<lu){
+      res='local'; if(!silent)toast('Здесь копия свежее облачной');
+    } else if(!silent) toast('Уже одно и то же');
     CFG.lastSync=Date.now();saveCfg();
     dot('ok','Синхронизировано');
+    return res;
   }catch(e){dot('err',e.message); if(!silent)toast('Не удалось: '+e.message)}
   finally{syncing=false}
 }
@@ -1706,7 +1738,8 @@ function syncSheet(){
       <span class="spacer"></span><button class="btn primary" id="sOk">Сохранить</button>
     </div>
     <div class="small" id="sMsg" style="margin-top:10px;color:var(--ink-2)">${
-      last?'Последняя синхронизация: '+last:'Ещё не синхронизировалось.'}</div>
+      last?'Последняя синхронизация: '+last:'Ещё не синхронизировалось.'}<br>
+      Здесь правили: ${fmtTS(DB.updated)}</div>
     <details style="margin-top:14px"><summary>Как получить Client ID</summary>
       <div class="small" style="color:var(--ink-2);line-height:1.7;padding-top:6px">
       1. <b>console.cloud.google.com</b> → создайте проект (любое имя).<br>
@@ -1730,9 +1763,35 @@ function syncSheet(){
     m().textContent='Открываю окно входа…';
     try{ await auth(false); m().textContent='Подключено. Теперь нажмите «Отправить».'; }
     catch(e){ m().textContent=hintAuth(e.message); }};
-  $('#sPull').onclick=async()=>{grab();try{await pull();m().textContent='Готово.'}catch(e){m().textContent=hintAuth(e.message)}};
+  /* Исход загрузки объясняем словами. «Здесь копия свежее» — самый
+     запутывающий случай: обмен прошёл, ошибок нет, а записей нет,
+     потому что подтягивать было нечего. Тогда предлагаем отправить. */
+  $('#sPull').onclick=async()=>{grab();m().textContent='Загружаю…';
+    try{
+      const r=await pull();
+      if(r==='got')        m().textContent='Записи с Диска загружены.';
+      else if(r==='local') m().innerHTML='Загружать нечего: здесь правили позже ('+
+        fmtTS(DB.updated)+'), чем в облаке. Похоже, изменения с другого устройства '+
+        'сюда ещё не отправлены — нажмите «Отправить» <b>там</b>, а здесь потом «Загрузить». '+
+        'Если уверены, что правильная копия в облаке: <a href="#" id="sForce">взять облачную поверх этой</a>.';
+      else if(r==='empty') m().textContent='В облаке пока пусто — нажмите «Отправить».';
+      else                 m().textContent='Здесь и в облаке одно и то же.';
+      const fb=$('#sForce'); if(fb) fb.onclick=async ev=>{ev.preventDefault();
+        if(!confirm('Заменить записи на этом устройстве облачными? Здешние правки пропадут.'))return;
+        await pull(false,true); m().textContent='Взята копия из облака.'};
+    }catch(e){m().textContent=hintAuth(e.message)}};
   $('#sPush').onclick=async()=>{grab();m().textContent='Отправляю…';
-    try{await push();m().textContent='Отправлено на Диск.'}catch(e){m().textContent=hintAuth(e.message)}};
+    try{await push();m().textContent='Отправлено на Диск.'}
+    catch(e){
+      if(/^CONFLICT\|/.test(e.message)){
+        m().innerHTML='В облаке копия свежее здешней — её писало другое устройство. '+
+          'Сначала «Загрузить», иначе те записи пропадут. '+
+          'Если отправляете именно эту копию осознанно: <a href="#" id="sForceP">отправить поверх</a>.';
+        $('#sForceP').onclick=async ev=>{ev.preventDefault();
+          if(!confirm('Перезаписать облако этой копией? Записи другого устройства пропадут.'))return;
+          try{await push(true);m().textContent='Отправлено поверх.'}catch(e2){m().textContent=hintAuth(e2.message)}};
+      } else m().textContent=hintAuth(e.message);
+    }};
   const so=$('#sOut'); if(so)so.onclick=()=>{signOut();closeSheet();toast('Отключено')};
 }
 /* переводит ошибки Google на человеческий */
@@ -2091,8 +2150,30 @@ try{
 
 /* ================= СТАРТ ================= */
 load(); applyTheme(); render();
-if(CFG.clientId&&CFG.autoSync&&CFG.everSignedIn) pull(true);
-window.addEventListener('beforeunload',()=>{if(CFG.clientId&&CFG.autoSync&&st){clearTimeout(st);push()}});
+/* Проверка облака при запуске и при каждом возвращении к приложению.
+   Одного запуска мало: на телефоне значок с главного экрана обычно
+   не перезагружает страницу, а поднимает её из памяти — тогда старт
+   отработал когда-то давно и свежие записи с компьютера не приходят.
+   Отсюда же и «синхронизация без ошибок, а данных нет».
+   Чаще раза в 20 секунд к Диску не ходим: переключений бывает много. */
+let syncSeen=0;
+async function syncNow(){
+  if(!(CFG.clientId&&CFG.autoSync&&CFG.everSignedIn)) return;
+  if(syncing||Date.now()-syncSeen<20000) return;
+  syncSeen=Date.now();
+  /* Облако старее — значит наша отправка когда-то не дошла (закрыли вкладку,
+     пропал интернет). Досылаем: «отправлять автоматически» так и обещает. */
+  if(await pull(true)==='local') push().catch(()=>{});
+}
+syncNow();
+/* Уход со страницы: отложенную отправку досылаем немедленно. На телефоне
+   beforeunload часто не срабатывает вовсе — приложение просто сворачивают,
+   поэтому тот же сброс висит и на скрытии вкладки. */
+const flushPush=()=>{if(CFG.clientId&&CFG.autoSync&&st){clearTimeout(st);st=null;push().catch(()=>{})}};
+document.addEventListener('visibilitychange',()=>{document.hidden?flushPush():syncNow()});
+window.addEventListener('focus',syncNow);
+window.addEventListener('pagehide',flushPush);
+window.addEventListener('beforeunload',flushPush);
 </script>
 
 
