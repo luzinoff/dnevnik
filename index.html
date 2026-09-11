@@ -124,6 +124,19 @@ textarea{resize:vertical;min-height:90px;line-height:1.6}
 .pill.on .box svg{opacity:1}
 .pill .nm{flex:1;min-width:0}
 .pill .tm{font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+/* .ro — значение с браслета: та же высота, что у кнопок оценки, но это
+   не поле ввода. Рамка мягче, чтобы не звало нажать.
+   Пять кнопок оценки и две ячейки в одну строку помещаются примерно
+   от 480px; на телефоне ячейки переносятся вниз и делят ширину поровну —
+   так перенос выглядит задуманным, а не обрывком строки. */
+.body-top{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.body-top .rate{flex:none}
+.ro{border:1px solid var(--line-soft);background:var(--surface-2);border-radius:9px;
+  padding:3px 11px;text-align:center;white-space:nowrap;min-width:72px;flex:1 1 auto}
+.ro>span{display:block;font-size:11px;color:var(--ink-3);line-height:1.4}
+.ro>b{display:block;font-size:15px;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1.35}
+.ro.empty>b{color:var(--ink-3);font-weight:400}
+@media(min-width:480px){.ro{flex:0 0 auto}}
 .rate{display:flex;gap:6px;flex-wrap:wrap}
 .rate button{width:38px;height:36px;border-radius:9px;border:1px solid var(--line);background:var(--surface-2);
   font-size:13px;color:var(--ink-3);padding:0;transition:.12s}
@@ -859,13 +872,11 @@ function rDay(){
   <div class="card">
     <h2>😴 Тело <span class="right" id="sleepTot">${x.sleepH!=null?fmtH(x.sleepH):''}</span></h2>
     <div class="small muted" style="margin-bottom:6px">Оценка сна</div>
-    <div class="rate" id="sq">${[1,2,3,4,5].map(i=>`<button data-v="${i}" class="${x.slept===i?'on':''}">${i}</button>`).join('')}</div>
-    <div class="grid3" style="margin-top:12px">
-      <label class="fld"><span>Пульс мин.</span><input type="number" inputmode="numeric" id="pl" value="${x.pulse??''}" placeholder="—"></label>
-      <label class="fld"><span>Вес, кг</span><input type="number" step="0.1" inputmode="decimal" id="wt" value="${x.weight??''}" placeholder="—"></label>
-      <label class="fld"><span>Шаги</span><input type="number" inputmode="numeric" id="stp" value="${x.steps??''}" placeholder="—"></label>
+    <div class="body-top">
+      <div class="rate" id="sq">${[1,2,3,4,5].map(i=>`<button data-v="${i}" class="${x.slept===i?'on':''}">${i}</button>`).join('')}</div>
+      ${roBox('Браслет',x.sleepScore,'Оценка сна браслетом. Приходит при импорте, вручную не правится')}
+      ${roBox('Пульс мин.',x.pulse,'Минимальный пульс за сутки по браслету. Приходит при импорте, вручную не правится')}
     </div>
-    ${bandLine(x)}
     <div class="small muted" style="margin:13px 0 6px">Сон</div>
     <div class="sleep-row">
       <label class="fld"><span>Лёг</span><input type="time" id="bd" value="${x.bed||''}"></label>
@@ -873,9 +884,14 @@ function rDay(){
       <div class="sleep-out"><span class="small muted">Вышло</span>
         <b id="shOut">${x.sleepH!=null?fmtH(x.sleepH):'—'}</b></div>
     </div>
+    ${bandLine(x)}
     <div class="row small" style="margin-top:9px">
       <button class="btn sm ghost" id="shMan">Ввести часы вручную</button>
       ${x.bed||x.rise?'<button class="btn sm ghost" id="shClr">Сбросить</button>':''}
+    </div>
+    <div class="grid2" style="margin-top:13px">
+      <label class="fld"><span>Вес, кг</span><input type="number" step="0.1" inputmode="decimal" id="wt" value="${x.weight??''}" placeholder="—"></label>
+      <label class="fld"><span>Шаги</span><input type="number" inputmode="numeric" id="stp" value="${x.steps??''}" placeholder="—"></label>
     </div>
   </div>
 
@@ -921,13 +937,21 @@ function rDay(){
 }
 /* Компактный бейдж рядом с датой: значок и короткая подпись.
    Тап переключает, долгое нажатие возвращает день к графику. */
-/* строка с тем, что принёс браслет: показываем только если данные есть */
+/* Значение с браслета в ряду оценки сна. Поля ввода тут нет намеренно:
+   это первичные данные прибора, руками они не правятся — при следующем
+   импорте правка всё равно была бы затёрта. Пустая ячейка остаётся
+   на месте, чтобы ряд не прыгал в дни без выгрузки. */
+function roBox(label,v,hint){
+  return `<div class="ro${v==null?' empty':''}" title="${esc(hint)}">
+    <span>${label}</span><b>${v==null?'—':v}</b></div>`;
+}
+/* строка с остальным, что принёс браслет: показываем только если данные есть.
+   Оценка сна и минимальный пульс сюда не входят — они выше, в ряду оценки. */
 function bandLine(x){
   const p=[];
-  if(x.restHr!=null)     p.push(`пульс покоя <b>${x.restHr}</b>`);
-  if(x.sleepScore!=null) p.push(`оценка браслета <b>${x.sleepScore}</b>`);
-  if(x.deepMin!=null)    p.push(`глубокий <b>${fmtH(x.deepMin/60)}</b>`);
-  if(x.remMin!=null)     p.push(`быстрый <b>${fmtH(x.remMin/60)}</b>`);
+  if(x.restHr!=null)  p.push(`пульс покоя <b>${x.restHr}</b>`);
+  if(x.deepMin!=null) p.push(`глубокий <b>${fmtH(x.deepMin/60)}</b>`);
+  if(x.remMin!=null)  p.push(`быстрый <b>${fmtH(x.remMin/60)}</b>`);
   if(!p.length) return '';
   return `<div class="small muted" style="margin-top:9px">⌚ ${p.join(' · ')}</div>`;
 }
@@ -974,7 +998,6 @@ function bindDay(){
   ['pointerup','pointerleave','pointercancel'].forEach(ev=>wb.addEventListener(ev,()=>clearTimeout(wT)));
   $('#sq').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;
     const v=+b.dataset.v; x.slept=x.slept===v?0:v; save(); rDay()};
-  $('#pl').onchange=e=>{x.pulse=+e.target.value||undefined;save()};
   $('#wt').onchange=e=>{x.weight=+e.target.value||undefined;save()};
   $('#stp').onchange=e=>{x.steps=+e.target.value||undefined;save()};
   /* Точечно обновляем итог, без rDay(): на десктопе стрелки в поле времени
