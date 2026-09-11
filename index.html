@@ -225,10 +225,13 @@ code{background:var(--surface-2);border:1px solid var(--line-soft);border-radius
 .agroup+.agroup{margin-top:13px}
 .ghd{font-size:11.5px;color:var(--ink-3);margin-bottom:6px;letter-spacing:.02em}
 .acts{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
-.act{border:1px solid var(--line);background:var(--surface-2);border-radius:12px;padding:10px 8px;
+/* Плитка должна оставаться удобной для тапа, но значок и короткое название
+   не требуют прежних 10px сверху и снизу: 7px делает ряд на 6px ниже,
+   не превращая его в мелкую цель для пальца. */
+.act{border:1px solid var(--line);background:var(--surface-2);border-radius:12px;padding:7px 8px;
   text-align:center;transition:.15s;position:relative}
-.act .ic{font-size:19px;line-height:1.2}
-.act .lb{font-size:11.5px;color:var(--ink-2);margin-top:3px}
+.act .ic{font-size:18px;line-height:1.2}
+.act .lb{font-size:11.5px;color:var(--ink-2);margin-top:2px}
 .act .n{position:absolute;top:5px;right:6px;font-size:11px;font-weight:700;color:var(--accent);opacity:0}
 .act.on{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
 .act.on .lb{color:var(--ink)}
@@ -321,14 +324,14 @@ const ACT_GROUPS=[
    {k:'places', ic:'🗺️', lb:'Новые места'},
    {k:'books',  ic:'📚', lb:'Книги'}]},
  {g:'Общение', items:[
-   {k:'friends', ic:'👥', lb:'Друзья'},
+   {k:'friends', ic:'👥', lb:'Знакомые'},
    {k:'people',  ic:'🙋', lb:'Новые люди'},
    {k:'touch',   ic:'🤝', lb:'Соц касание', hint:'короткий контакт: заговорил, поздоровался, написал'}]},
  {g:'Отношения', items:[
    {k:'dating', ic:'💐', lb:'Свидание'},
    {k:'sexn',   ic:'❤️', lb:'Секс'},
    /* w0: отметка для наблюдения, в балл дня не идёт */
-   {k:'hand',   ic:'❓', lb:'Руч', w0:true}]},
+   {k:'hand',   ic:'❓', lb:'Р', w0:true}]},
  {g:'Прочее', items:[
    {k:'will',  ic:'🔥', lb:'Воля', hint:'сделал через сопротивление'},
    {k:'medit', ic:'🧘', lb:'Медитация'},
@@ -357,8 +360,8 @@ function parseSex(v){
 
 /* ---- переезд со старых кнопок на новые ----
    Английский был счётчиком 0–3, теперь три отдельные кнопки: 1 балл — Duolingo,
-   2 — плюс AI-бот, 3 — плюс носитель. Общее «Общение» стало «Друзьями»,
-   а «Секс» из свободной пометки развернулся в счётчик + отдельную кнопку «Руч». */
+   2 — плюс AI-бот, 3 — плюс носитель. Общее «Общение» стало «Знакомыми»,
+   а «Секс» из свободной пометки развернулся в счётчик + отдельную кнопку «Р». */
 const ACTS_V=4;
 /* название поля Спорта, куда льётся закаливание — оно же есть в EXS */
 const EX_COLD='Плавание / закаливание';
