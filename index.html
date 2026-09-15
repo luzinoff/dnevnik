@@ -908,7 +908,6 @@ function rDay(){
         <div class="ro out"><b id="shOut">${x.sleepH!=null?fmtH(x.sleepH):'—'}</b></div></div>
     </div>
     ${bandLine(x)}
-    ${x.bed||x.rise?'<div class="row small" style="margin-top:9px"><button class="btn sm ghost" id="shClr">Сбросить</button></div>':''}
     <div class="grid2" style="margin-top:13px">
       <label class="fld"><span>Вес, кг</span><input type="number" step="0.1" inputmode="decimal" id="wt" value="${x.weight??''}" placeholder="—"></label>
       <label class="fld"><span>Шаги</span><input type="number" inputmode="numeric" id="stp" value="${x.steps??''}" placeholder="—"></label>
@@ -1033,8 +1032,6 @@ function bindDay(){
   };
   $('#bd').onchange=sleepIn; $('#rs').onchange=sleepIn;
   $('#bd').onblur=()=>rDay(); $('#rs').onblur=()=>rDay();
-  const shc=$('#shClr'); if(shc)shc.onclick=()=>{
-    delete x.bed; delete x.rise; delete x.sleepH; save(); rDay()};
   $$('.sp').forEach(b=>b.onclick=()=>{
     x.supp=x.supp||[]; const nm=b.dataset.n;
     const i=x.supp.indexOf(nm); i<0?x.supp.push(nm):x.supp.splice(i,1);
