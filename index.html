@@ -908,10 +908,7 @@ function rDay(){
         <div class="ro out"><b id="shOut">${x.sleepH!=null?fmtH(x.sleepH):'—'}</b></div></div>
     </div>
     ${bandLine(x)}
-    <div class="row small" style="margin-top:9px">
-      <button class="btn sm ghost" id="shMan">Ввести часы вручную</button>
-      ${x.bed||x.rise?'<button class="btn sm ghost" id="shClr">Сбросить</button>':''}
-    </div>
+    ${x.bed||x.rise?'<div class="row small" style="margin-top:9px"><button class="btn sm ghost" id="shClr">Сбросить</button></div>':''}
     <div class="grid2" style="margin-top:13px">
       <label class="fld"><span>Вес, кг</span><input type="number" step="0.1" inputmode="decimal" id="wt" value="${x.weight??''}" placeholder="—"></label>
       <label class="fld"><span>Шаги</span><input type="number" inputmode="numeric" id="stp" value="${x.steps??''}" placeholder="—"></label>
@@ -1038,22 +1035,6 @@ function bindDay(){
   $('#bd').onblur=()=>rDay(); $('#rs').onblur=()=>rDay();
   const shc=$('#shClr'); if(shc)shc.onclick=()=>{
     delete x.bed; delete x.rise; delete x.sleepH; save(); rDay()};
-  $('#shMan').onclick=()=>{
-    openSheet(`<h2>Часы сна</h2>
-      <div class="small muted" style="margin-bottom:9px">Если время отбоя неизвестно —
-      впишите продолжительность. Часы и минуты можно через точку: 7.5</div>
-      <label class="fld"><span>Часов</span>
-        <input type="number" step="0.25" inputmode="decimal" id="shv" value="${x.sleepH??''}" placeholder="—"></label>
-      <div class="row" style="margin-top:14px"><button class="btn" data-close style="flex:1">Отмена</button>
-      <button class="btn primary" id="shok" style="flex:1">Сохранить</button></div>`);
-    setTimeout(()=>$('#shv').focus(),80);
-    $('#shok').onclick=()=>{
-      const v=+$('#shv').value;
-      if(v>0){ x.sleepH=Math.round(v*100)/100; delete x.bed; delete x.rise }
-      else { delete x.sleepH }
-      save(); closeSheet(); rDay();
-    };
-  };
   $$('.sp').forEach(b=>b.onclick=()=>{
     x.supp=x.supp||[]; const nm=b.dataset.n;
     const i=x.supp.indexOf(nm); i<0?x.supp.push(nm):x.supp.splice(i,1);
