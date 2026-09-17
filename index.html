@@ -80,8 +80,8 @@ nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:50;
 .ro.out>b{color:var(--accent);white-space:nowrap;font-size:14px}
 .row{display:flex;align-items:center;gap:9px}
 .spacer{flex:1}.muted{color:var(--ink-3)}.small{font-size:12.5px}
-label.fld{display:block}
-label.fld>span{display:block;font-size:12px;color:var(--ink-2);margin-bottom:5px}
+.fld{display:block}
+.fld>span{display:block;font-size:12px;color:var(--ink-2);margin-bottom:5px}
 input[type=text],input[type=number],input[type=date],input[type=time],input[type=url],textarea,select{
   width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;
   padding:9px 11px;outline:none;transition:border-color .15s,background .15s}
@@ -150,6 +150,11 @@ textarea{resize:vertical;min-height:90px;line-height:1.6}
    отступом 26px, специфичность у него такая же, а объявлен он ниже — и
    ячейка в пустые дни вырастала вдвое против кнопок оценки. */
 .ro.dash>b{color:var(--ink-3);font-weight:400}
+/* Пульс покоя в ряду с весом и шагами: та же подпись `.fld`, но ячейка
+   только для чтения — данные прибора руками не правятся. Высота и рамка
+   как у input, иначе третья колонка визуально выбивалась бы из сетки. */
+.fld .ro{height:auto;padding:9px 11px;border-radius:10px;border-color:var(--line);justify-items:start}
+.fld .ro>b{font-size:14px;font-weight:400}
 /* Уточнение в подписи — первое, чем жертвуем на узком экране: лучше
    короткое слово целиком, чем длинное, обрезанное многоточием. */
 .bt-lb .xs{font-style:normal}
@@ -896,7 +901,7 @@ function rDay(){
       <div class="bt-col fix"><span class="bt-lb">Оценка сна</span>
         <div class="rate" id="sq">${[1,2,3,4,5].map(i=>`<button data-v="${i}" class="${x.slept===i?'on':''}">${i}</button>`).join('')}</div></div>
       ${roBox('Браслет',x.sleepScore,'Оценка сна браслетом. Приходит при импорте, вручную не правится')}
-      ${roBox('Пульс <i class="xs">мин</i>',x.pulse,'Минимальный пульс за сутки по браслету. Не путать с пульсом покоя ниже: он выше на 10–15 ударов. Приходит при импорте, вручную не правится')}
+      ${roBox('Пульс <i class="xs">мин</i>',x.pulse,'Минимальный пульс за сутки по браслету. Не путать с пульсом покоя рядом с весом: он выше на 10–15 ударов. Приходит при импорте, вручную не правится')}
     </div>
     <div class="sleep-row" style="margin-top:11px">
       <label class="bt-col"><span class="bt-lb">Лёг</span>
@@ -908,9 +913,12 @@ function rDay(){
         <div class="ro out"><b id="shOut">${x.sleepH!=null?fmtH(x.sleepH):'—'}</b></div></div>
     </div>
     ${bandLine(x)}
-    <div class="grid2" style="margin-top:13px">
+    <div class="grid3" style="margin-top:13px">
       <label class="fld"><span>Вес, кг</span><input type="number" step="0.1" inputmode="decimal" id="wt" value="${x.weight??''}" placeholder="—"></label>
       <label class="fld"><span>Шаги</span><input type="number" inputmode="numeric" id="stp" value="${x.steps??''}" placeholder="—"></label>
+      <div class="fld" title="Пульс покоя по браслету. Приходит при импорте, вручную не правится">
+        <span>Пульс покоя</span>
+        <div class="ro${x.restHr==null?' dash':''}"><b>${x.restHr==null?'—':x.restHr}</b></div></div>
     </div>
   </div>
 
@@ -965,10 +973,10 @@ function roBox(label,v,hint){
     <div class="ro${v==null?' dash':''}"><b>${v==null?'—':v}</b></div></div>`;
 }
 /* строка с остальным, что принёс браслет: показываем только если данные есть.
-   Оценка сна и минимальный пульс сюда не входят — они выше, в ряду оценки. */
+   Оценка сна и минимальный пульс — выше, в ряду оценки; пульс покоя —
+   ниже, рядом с весом и шагами. Здесь остаются фазы сна. */
 function bandLine(x){
   const p=[];
-  if(x.restHr!=null)  p.push(`пульс покоя <b>${x.restHr}</b>`);
   if(x.deepMin!=null) p.push(`глубокий <b>${fmtH(x.deepMin/60)}</b>`);
   if(x.remMin!=null)  p.push(`быстрый <b>${fmtH(x.remMin/60)}</b>`);
   if(!p.length) return '';
