@@ -469,7 +469,7 @@ const SUPP_MERGE={
   'гинкго билоба':['гинкго'],
   'антибиотик':['антибио','антиб'],
   'cdp-холин':['cdp'],
-  'тизанидин':['тиза','тизанид','миорелаксант','миорелакс','миорел'],
+  'миорелаксант':['тизанидин','тиза','тизанид','миорелаксант','миорелакс','миорел'],
   'мексидол':[],
   'мильгамма':['мильгам','мильг'],
   'кортексин':['кортекс'],
@@ -519,7 +519,11 @@ const canonSupp=n=>{
   return t.toLowerCase();
 };
 /* ревизия словаря: увеличить при правке SUPP_MERGE — пересчёт пройдёт заново */
-const SUPP_V=7;
+const SUPP_V=8;
+/* Ревизия порядка скрытого раздела «Ж». Старый массив хранился от старых
+   записей к новым, хотя новые добавляются через unshift наверх. Разворачиваем
+   его один раз; после этого старые и новые записи идут от новых к старым. */
+const ZH_V=1;
 
 const ACT_W=()=>Object.fromEntries(ACTS.map(a=>[a.k,a.w0?0:1]));
 /* cloudSeen — время правки облачного файла, каким мы его видели в последний
@@ -540,6 +544,13 @@ function initFilters(){
   if(!gfilter||!s.some(x=>x[0]===gfilter)) gfilter=s[0][0];
   if(!nsec||!n.some(x=>x[0]===nsec)) nsec=(n[0]||NSEC()[0])[0];
 }
+function migrateZh(){
+  if(DB.zhV>=ZH_V) return false;
+  const list=DB.notes&&DB.notes[HIDDEN_SEC];
+  if(Array.isArray(list)) list.reverse();
+  DB.zhV=ZH_V;
+  return true;
+}
 /* «Ж» скрыт: открывается тремя тапами по заголовку «Заметки», закрывается при уходе с вкладки */
 const HIDDEN_SEC='zh_list';
 let zhOpen=false, zhTaps=0, zhT=null;
@@ -548,9 +559,10 @@ function load(){
   let raw=null;
   try{raw=localStorage.getItem(LS)}catch(e){}
   if(raw){ try{DB=Object.assign(BLANK(),JSON.parse(raw));
-    let need = DB.suppV!==SUPP_V || !(DB.actsV>=ACTS_V) || !(DB.goalsV>=GOALS_V);
+    let need = DB.suppV!==SUPP_V || !(DB.actsV>=ACTS_V) || !(DB.goalsV>=GOALS_V) || !(DB.zhV>=ZH_V);
     if(DB.suppV!==SUPP_V) migrateSupps();
     migrateActs(); migrateGoals();
+    if(migrateZh()) need=true;
     if(migrateClean()) need=true;
     if(need) localStorage.setItem(LS,JSON.stringify(DB));
   }catch(e){} }
@@ -577,7 +589,7 @@ function seedFromFile(){
       DB.goals=flattenGoals(s.goals||{});
     }
     if(DB.suppV!==SUPP_V) migrateSupps();
-    migrateActs(); migrateGoals(); migrateClean();
+    migrateActs(); migrateGoals(); migrateZh(); migrateClean();
     /* Время правки берём из выгрузки, если оно там есть: иначе свежая копия
        выглядит новее облачной и синхронизация не подтянет более поздние дни. */
     if(!DB.updated) DB.updated=Date.now();
@@ -831,7 +843,7 @@ async function pull(silent,force){
     if(cu>lu||force){
       DB=Object.assign(BLANK(),j);
       if(DB.suppV!==SUPP_V) migrateSupps();
-      migrateActs(); migrateGoals(); migrateClean(); initFilters();
+      migrateActs(); migrateGoals(); migrateZh(); migrateClean(); initFilters();
       localStorage.setItem(LS,JSON.stringify(DB)); render();
       res='got'; if(!silent)toast('Загружено из облака');
     } else if(cu<lu){
@@ -1746,7 +1758,7 @@ function importJSON(){
       if(!confirm('Заменить текущие данные данными из файла?'))return;
       DB=Object.assign(BLANK(),j);
       if(DB.suppV!==SUPP_V) migrateSupps();
-      migrateActs(); migrateGoals(); migrateClean(); initFilters();
+      migrateActs(); migrateGoals(); migrateZh(); migrateClean(); initFilters();
       save();render();toast('Импортировано');
     }catch(e){toast('Ошибка: '+e.message)}};
     r.readAsText(f)};
