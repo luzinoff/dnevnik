@@ -524,6 +524,9 @@ const SUPP_V=8;
    записей к новым, хотя новые добавляются через unshift наверх. Разворачиваем
    его один раз; после этого старые и новые записи идут от новых к старым. */
 const ZH_V=1;
+/* Ревизия подписей разделов: ключ `biz` сохраняется, меняется только
+   отображаемое имя уже существующего раздела. */
+const SEC_V=1;
 
 const ACT_W=()=>Object.fromEntries(ACTS.map(a=>[a.k,a.w0?0:1]));
 /* cloudSeen — время правки облачного файла, каким мы его видели в последний
@@ -551,6 +554,14 @@ function migrateZh(){
   DB.zhV=ZH_V;
   return true;
 }
+function migrateSections(){
+  if(DB.secV>=SEC_V) return false;
+  const list=DB.sec&&DB.sec.notes;
+  const row=Array.isArray(list)&&list.find(s=>s[0]==='biz');
+  if(row) row[1]='🚀 Проекты';
+  DB.secV=SEC_V;
+  return true;
+}
 /* «Ж» скрыт: открывается тремя тапами по заголовку «Заметки», закрывается при уходе с вкладки */
 const HIDDEN_SEC='zh_list';
 let zhOpen=false, zhTaps=0, zhT=null;
@@ -559,10 +570,11 @@ function load(){
   let raw=null;
   try{raw=localStorage.getItem(LS)}catch(e){}
   if(raw){ try{DB=Object.assign(BLANK(),JSON.parse(raw));
-    let need = DB.suppV!==SUPP_V || !(DB.actsV>=ACTS_V) || !(DB.goalsV>=GOALS_V) || !(DB.zhV>=ZH_V);
+    let need = DB.suppV!==SUPP_V || !(DB.actsV>=ACTS_V) || !(DB.goalsV>=GOALS_V) || !(DB.zhV>=ZH_V) || !(DB.secV>=SEC_V);
     if(DB.suppV!==SUPP_V) migrateSupps();
     migrateActs(); migrateGoals();
     if(migrateZh()) need=true;
+    if(migrateSections()) need=true;
     if(migrateClean()) need=true;
     if(need) localStorage.setItem(LS,JSON.stringify(DB));
   }catch(e){} }
@@ -589,7 +601,7 @@ function seedFromFile(){
       DB.goals=flattenGoals(s.goals||{});
     }
     if(DB.suppV!==SUPP_V) migrateSupps();
-    migrateActs(); migrateGoals(); migrateZh(); migrateClean();
+    migrateActs(); migrateGoals(); migrateZh(); migrateSections(); migrateClean();
     /* Время правки берём из выгрузки, если оно там есть: иначе свежая копия
        выглядит новее облачной и синхронизация не подтянет более поздние дни. */
     if(!DB.updated) DB.updated=Date.now();
@@ -843,7 +855,7 @@ async function pull(silent,force){
     if(cu>lu||force){
       DB=Object.assign(BLANK(),j);
       if(DB.suppV!==SUPP_V) migrateSupps();
-      migrateActs(); migrateGoals(); migrateZh(); migrateClean(); initFilters();
+      migrateActs(); migrateGoals(); migrateZh(); migrateSections(); migrateClean(); initFilters();
       localStorage.setItem(LS,JSON.stringify(DB)); render();
       res='got'; if(!silent)toast('Загружено из облака');
     } else if(cu<lu){
@@ -1153,7 +1165,7 @@ const SCOPES_DEF=[['month','Месяц'],['year','2026'],['phuket','Пхукет
   ['life','Глобальные'],['wish','100 хочу']];
 const NSEC_DEF=[['ideas','Идеи и инсайты'],
   ['wins','Победы'],['books','Книги'],['insights','Инсайты'],
-  ['biz','Бизнес'],['self','Самооценка'],['grow','Изменения'],['talk','Общение'],
+  ['biz','🚀 Проекты'],['self','Самооценка'],['grow','Изменения'],['talk','Общение'],
   ['zh_list','Ж'],['free','Свои']];
 /* kind: 'goals' | 'notes'. Возвращает живой массив пар [ключ, название]. */
 function secs(kind){
@@ -1758,7 +1770,7 @@ function importJSON(){
       if(!confirm('Заменить текущие данные данными из файла?'))return;
       DB=Object.assign(BLANK(),j);
       if(DB.suppV!==SUPP_V) migrateSupps();
-      migrateActs(); migrateGoals(); migrateZh(); migrateClean(); initFilters();
+      migrateActs(); migrateGoals(); migrateZh(); migrateSections(); migrateClean(); initFilters();
       save();render();toast('Импортировано');
     }catch(e){toast('Ошибка: '+e.message)}};
     r.readAsText(f)};
