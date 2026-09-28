@@ -341,7 +341,7 @@ const ACT_GROUPS=[
    {k:'will',  ic:'🔥', lb:'Воля', hint:'сделал через сопротивление'},
    {k:'medit', ic:'🧘', lb:'Медитация'},
    {k:'post',  ic:'📣', lb:'Посты'},
-   {k:'money', ic:'💰', lb:'Деньги'}]}
+   {k:'money', ic:'🚀', lb:'Проекты'}]}
 ];
 const ACTS=[{k:'sport', ic:'🏋️', lb:'Спорт'}, ...ACT_GROUPS.flatMap(g=>g.items)];
 
@@ -524,10 +524,9 @@ const SUPP_V=8;
    записей к новым, хотя новые добавляются через unshift наверх. Разворачиваем
    его один раз; после этого старые и новые записи идут от новых к старым. */
 const ZH_V=1;
-/* Ревизия подписей разделов: ключ записи сохраняется, меняется только
-   отображаемое имя уже существующего раздела. Версия 3 повторяет правку
-   и для уже открытой копии, где подпись могла остаться старой. */
-const SEC_V=3;
+/* Ревизия подписей разделов: оставлена для совместимости с уже сохранёнными
+   копиями, где предыдущая версия приложения могла записать secV. */
+const SEC_V=4;
 
 const ACT_W=()=>Object.fromEntries(ACTS.map(a=>[a.k,a.w0?0:1]));
 /* cloudSeen — время правки облачного файла, каким мы его видели в последний
@@ -558,7 +557,7 @@ function migrateZh(){
 function migrateSections(){
   if(DB.secV>=SEC_V) return false;
   const list=DB.sec&&DB.sec.notes;
-  const row=Array.isArray(list)&&list.find(s=>s[0]==='biz'||s[1]==='Бизнес');
+  const row=Array.isArray(list)&&list.find(s=>s[0]==='biz'||s[1]==='Бизнес'||s[1]==='🚀 Проекты');
   if(row){ row[0]='biz'; row[1]='🚀 Проекты'; }
   DB.secV=SEC_V;
   return true;
