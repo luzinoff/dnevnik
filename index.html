@@ -203,14 +203,14 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .life-head .hint{flex:1 1 240px;min-width:0}
 .life-year+.life-year{margin-top:12px}
 .life-year h3{font-size:13px;color:var(--ink-2);margin-bottom:7px}
-.life-months{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:4px}
-.life-month{min-width:0;min-height:49px;border:1px solid var(--line-soft);border-radius:7px;
+.life-months{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));grid-auto-rows:49px;gap:4px}
+.life-month{box-sizing:border-box;min-width:0;min-height:0;height:49px;max-height:49px;border:1px solid var(--line-soft);border-radius:7px;
   background:var(--surface-2);padding:4px 2px;text-align:center;cursor:pointer;
-  transition:transform .12s,filter .12s;position:relative}
+  transition:transform .12s,filter .12s;position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center}
 .life-month:hover{transform:translateY(-1px);filter:brightness(.98)}
-.life-month .lm-n{display:block;font-size:10px;color:var(--ink-3);line-height:1.1}
+.life-month .lm-n{display:block;font-size:10px;color:var(--ink-3);line-height:1.1;white-space:nowrap}
 .life-month .lm-s{display:block;font-size:12px;font-weight:650;line-height:1.2;margin-top:5px;
-  font-variant-numeric:tabular-nums}
+  font-variant-numeric:tabular-nums;white-space:nowrap}
 .life-month.empty{background:var(--surface-2);color:var(--ink-3);cursor:default}
 .life-month.future{opacity:.42;cursor:default}
 .life-month.lm1{background:color-mix(in srgb,var(--accent) 22%,var(--surface-2))}
@@ -225,7 +225,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .life-legend i.lm2{background:color-mix(in srgb,var(--accent) 42%,var(--surface-2))}
 .life-legend i.lm3{background:color-mix(in srgb,var(--accent) 64%,var(--surface-2))}
 .life-legend i.lm4{background:var(--accent)}
-@media(max-width:560px){.life-months{gap:3px}.life-month{min-height:45px;padding:3px 1px}.life-month .lm-s{font-size:11px;margin-top:4px}}
+@media(max-width:560px){.life-months{gap:3px;grid-auto-rows:45px}.life-month{height:45px;max-height:45px;padding:3px 1px}.life-month .lm-s{font-size:11px;margin-top:4px}}
 canvas{width:100%;display:block}
 .modal{position:fixed;inset:0;z-index:100;display:none;align-items:flex-end;justify-content:center}
 .modal.on{display:flex}
@@ -1398,7 +1398,7 @@ function editGoal(id){
 
 /* ================= КАЛЕНДАРЬ ЖИЗНИ ================= */
 /* Дата рождения зафиксирована владельцем файла в LIFE_BIRTH выше. Поля для
-   её редактирования нет: календарь начинается с первого месяца 2021 года. */
+   её редактирования нет: календарь начинается с января 2022 года. */
 /* Начало панели — всегда первое число календарного месяца. Это важно при
    переходе между месяцами: даты 29–31 числа не должны пропускать февраль. */
 const lifeMonthStart=(s,i)=>{
@@ -1415,14 +1415,14 @@ const lifeMonthLabel=s=>MONS[pISO(s).getMonth()];
 function rLife(){
   $('#v-life').innerHTML=`
   <div class="card">
-    <h2>🗓 Календарь жизни <span class="right">с 2021 года</span></h2>
+    <h2>🗓 Календарь жизни <span class="right">с 2022 года</span></h2>
     <div class="small muted">Дата рождения: 23.08.1988. Каждая панель — один календарный месяц; число внутри — сумма баллов за дни этого месяца.</div>
   </div>
   ${lifeGrid()}`;
   $$('.life-month[data-d]').forEach(b=>b.onclick=()=>{cur=b.dataset.d;go('day')});
 }
 function lifeGrid(){
-  const from='2021-01-01', last=today().slice(0,7)+'-01';
+  const from='2022-01-01', last=today().slice(0,7)+'-01';
   const months=[];
   for(let s=from;s<=last;s=lifeMonthStart(s,1)){
     const end=lifeMonthStart(s,1), days=sortedDays().filter(d=>d>=s&&d<end);
@@ -1430,7 +1430,7 @@ function lifeGrid(){
   }
   const max=Math.max(1,...months.map(x=>x.total||0));
   const years=[];
-  for(let y=2021;y<=pISO(last).getFullYear();y++){
+  for(let y=2022;y<=pISO(last).getFullYear();y++){
     const row=months.filter(x=>x.start.slice(0,4)===String(y));
     const cells=Array.from({length:12},(_,m)=>{
       const x=row[m], start=x?x.start:`${y}-${pad(m+1)}-01`, future=!x;
