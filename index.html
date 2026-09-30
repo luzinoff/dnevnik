@@ -568,7 +568,8 @@ const DEF_CFG={theme:'light',clientId:'',fileId:'',cloudSeen:'',everSignedIn:fal
   weights:ACT_W(), suppOrder:[], hidden:[]};
 
 /* sec — списки разделов целей и заметок, secDel — удалённые вручную ключи */
-const BLANK=()=>({days:{},goals:[],notes:{},supps:[],sec:{},secDel:{},lifeBirth:'',updated:0});
+const LIFE_BIRTH='1988-08-23';
+const BLANK=()=>({days:{},goals:[],notes:{},supps:[],sec:{},secDel:{},lifeBirth:LIFE_BIRTH,updated:0});
 let DB=BLANK(), CFG={...DEF_CFG}, cur=today(), tab='day';
 let dq='', gfilter='', nsec='';
 /* Разделы можно переименовать, добавить и удалить, поэтому активный фильтр
@@ -603,6 +604,7 @@ function load(){
   try{raw=localStorage.getItem(LS)}catch(e){}
   if(raw){ try{DB=Object.assign(BLANK(),JSON.parse(raw));
     let need = DB.suppV!==SUPP_V || !(DB.actsV>=ACTS_V) || !(DB.goalsV>=GOALS_V) || !(DB.zhV>=ZH_V) || !(DB.secV>=SEC_V);
+    if(DB.lifeBirth!==LIFE_BIRTH){DB.lifeBirth=LIFE_BIRTH;need=true}
     if(DB.suppV!==SUPP_V) migrateSupps();
     migrateActs(); migrateGoals();
     if(migrateZh()) need=true;
@@ -632,6 +634,7 @@ function seedFromFile(){
       DB.days=s.days||{}; DB.notes=s.notes||{}; DB.supps=(s.suppDict||[]).map(n=>({id:uid(),name:n,slot:'day'}));
       DB.goals=flattenGoals(s.goals||{});
     }
+    DB.lifeBirth=LIFE_BIRTH;
     if(DB.suppV!==SUPP_V) migrateSupps();
     migrateActs(); migrateGoals(); migrateZh(); migrateSections(); migrateClean();
     /* Время правки берём из выгрузки, если оно там есть: иначе свежая копия
@@ -886,6 +889,7 @@ async function pull(silent,force){
     let res='same';
     if(cu>lu||force){
       DB=Object.assign(BLANK(),j);
+      DB.lifeBirth=LIFE_BIRTH;
       if(DB.suppV!==SUPP_V) migrateSupps();
       migrateActs(); migrateGoals(); migrateZh(); migrateSections(); migrateClean(); initFilters();
       localStorage.setItem(LS,JSON.stringify(DB)); render();
@@ -1393,24 +1397,15 @@ function editGoal(id){
 }
 
 /* ================= КАЛЕНДАРЬ ЖИЗНИ ================= */
-const LIFE_MONTHS=70*12;
-/* Месячные панели привязаны к календарным месяцам. Сначала ставим
-   первое число, чтобы 29–31-е числа рождения не переполняли февраль. */
-const lifeMonthStart=(birth,i)=>{
-  const d=pISO(birth);
+/* Дата рождения зафиксирована владельцем файла в LIFE_BIRTH выше. Поля для
+   её редактирования нет: календарь начинается с первого месяца 2021 года. */
+/* Начало панели — всегда первое число календарного месяца. Это важно при
+   переходе между месяцами: даты 29–31 числа не должны пропускать февраль. */
+const lifeMonthStart=(s,i)=>{
+  const d=pISO(s);
   d.setDate(1);
   d.setMonth(d.getMonth()+i);
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-01`;
-};
-const lifeMonthData=(birth,i)=>{
-  const start=lifeMonthStart(birth,i), end=lifeMonthStart(birth,i+1), now=today();
-  if(start>now) return {start,end,future:true,current:false,total:null,days:0};
-  const days=sortedDays().filter(d=>d>=start&&d<end);
-  return {
-    start,end,future:false,current:now<end,
-    total:days.length?Math.round(days.reduce((s,d)=>s+score(d),0)*10)/10:0,
-    days:days.length
-  };
 };
 const lifeLevel=(v,max)=>{
   if(v==null||v<=0||max<=0)return '';
@@ -1418,40 +1413,36 @@ const lifeLevel=(v,max)=>{
 };
 const lifeMonthLabel=s=>MONS[pISO(s).getMonth()];
 function rLife(){
-  const birth=DB.lifeBirth||'';
   $('#v-life').innerHTML=`
   <div class="card">
-    <h2>🗓 Календарь жизни <span class="right">0–70 лет</span></h2>
-    <div class="life-head">
-      <label class="fld"><span>Дата рождения</span>
-        <input type="date" id="lifeBirth" value="${esc(birth)}" max="${today()}"></label>
-      <div class="hint small muted">Каждая панель — один месяц жизни. Внутри показана сумма баллов за дни этого месяца.</div>
-    </div>
+    <h2>🗓 Календарь жизни <span class="right">с 2021 года</span></h2>
+    <div class="small muted">Дата рождения: 23.08.1988. Каждая панель — один календарный месяц; число внутри — сумма баллов за дни этого месяца.</div>
   </div>
-  ${birth?lifeGrid(birth):'<div class="empty">Введите дату рождения, чтобы построить календарь.</div>'}`;
-  const inp=$('#lifeBirth');
-  inp.onchange=()=>{
-    const v=inp.value;
-    if(v&&v<=today()){DB.lifeBirth=v;save();rLife()}
-    else if(!v){delete DB.lifeBirth;save();rLife()}
-  };
+  ${lifeGrid()}`;
   $$('.life-month[data-d]').forEach(b=>b.onclick=()=>{cur=b.dataset.d;go('day')});
 }
-function lifeGrid(birth){
-  const data=Array.from({length:LIFE_MONTHS},(_,i)=>lifeMonthData(birth,i));
-  const past=data.filter(x=>!x.future), max=Math.max(1,...past.map(x=>x.total||0));
-  const years=[];
-  for(let y=0;y<70;y++){
-    const cells=data.slice(y*12,y*12+12).map(x=>{
-      const cls=['life-month',x.future?'future':x.total===0?'empty':lifeLevel(x.total,max),x.start.slice(0,7)===today().slice(0,7)?'now':''].filter(Boolean).join(' ');
-      const age=y, title=x.future?`Возраст ${age} лет, ${lifeMonthLabel(x.start)} — ещё впереди`:
-        `${age} лет, ${lifeMonthLabel(x.start)} ${pISO(x.start).getFullYear()}: ${x.total||0} баллов, ${x.days} дн. с данными`;
-      return `<button class="${cls}" ${x.future?'disabled':''} ${x.future?'':'data-d="'+x.start+'"'} title="${title}">
-        <span class="lm-n">${lifeMonthLabel(x.start)}</span><span class="lm-s">${x.future?'':(x.total||0)}</span></button>`;
-    }).join('');
-    years.push(`<div class="life-year"><h3>${y}–${y+1} лет <span class="muted">· ${pISO(data[y*12].start).getFullYear()}</span></h3><div class="life-months">${cells}</div></div>`);
+function lifeGrid(){
+  const from='2021-01-01', last=today().slice(0,7)+'-01';
+  const months=[];
+  for(let s=from;s<=last;s=lifeMonthStart(s,1)){
+    const end=lifeMonthStart(s,1), days=sortedDays().filter(d=>d>=s&&d<end);
+    months.push({start:s,end,total:days.length?Math.round(days.reduce((sum,d)=>sum+score(d),0)*10)/10:0,days:days.length});
   }
-  return `<div class="card"><div class="small muted" style="margin-bottom:10px">Нажмите на месяц, чтобы открыть первый день его периода. Сумма считается по тем дням, которые есть в дневнике.</div>${years.join('')}</div>
+  const max=Math.max(1,...months.map(x=>x.total||0));
+  const years=[];
+  for(let y=2021;y<=pISO(last).getFullYear();y++){
+    const row=months.filter(x=>x.start.slice(0,4)===String(y));
+    const cells=Array.from({length:12},(_,m)=>{
+      const x=row[m], start=x?x.start:`${y}-${pad(m+1)}-01`, future=!x;
+      const cls=['life-month',future?'future':x.total===0?'empty':lifeLevel(x.total,max),start.slice(0,7)===last.slice(0,7)?'now':''].filter(Boolean).join(' ');
+      const title=future?`${MONS[m]} ${y} — ещё впереди`:
+        `${MONS[m]} ${y}: ${x.total||0} баллов, ${x.days} дн. с данными`;
+      return `<button class="${cls}" ${future?'disabled':''} ${future?'':'data-d="'+x.start+'"'} title="${title}">
+        <span class="lm-n">${MONS[m]}</span><span class="lm-s">${future?'':(x.total||0)}</span></button>`;
+    }).join('');
+    years.push(`<div class="life-year"><h3>${y} год</h3><div class="life-months">${cells}</div></div>`);
+  }
+  return `<div class="card"><div class="small muted" style="margin-bottom:10px">Январь — Декабрь в одной строке. Нажмите на месяц, чтобы открыть его первый день. Сумма считается по дням, которые есть в дневнике.</div>${years.join('')}</div>
     <div class="card"><div class="life-legend small muted"><span>Меньше баллов</span><i></i><i class="lm1"></i><i class="lm2"></i><i class="lm3"></i><i class="lm4"></i><span>Больше баллов</span><span style="margin-left:8px">· рамка — текущий месяц</span></div></div>`;
 }
 
@@ -1872,6 +1863,7 @@ function importJSON(){
       if(!j.days)throw new Error('не тот формат');
       if(!confirm('Заменить текущие данные данными из файла?'))return;
       DB=Object.assign(BLANK(),j);
+      DB.lifeBirth=LIFE_BIRTH;
       if(DB.suppV!==SUPP_V) migrateSupps();
       migrateActs(); migrateGoals(); migrateZh(); migrateSections(); migrateClean(); initFilters();
       save();render();toast('Импортировано');
