@@ -51,7 +51,7 @@ header.top{position:sticky;top:0;z-index:40;background:color-mix(in srgb,var(--b
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:50;
   background:color-mix(in srgb,var(--surface) 94%,transparent);backdrop-filter:blur(14px);
   border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
-.tabs-in{max-width:920px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr)}
+.tabs-in{max-width:920px;margin:0 auto;display:grid;grid-template-columns:repeat(6,1fr)}
 .tab{background:none;border:0;padding:9px 2px 10px;display:flex;flex-direction:column;
   align-items:center;gap:3px;color:var(--ink-3);font-size:10.5px;font-weight:500}
 .tab svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -195,6 +195,37 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .hm.hm-act i:hover{transform:scale(1.28);outline:1.5px solid var(--ink-3);outline-offset:1px}
 .hm.hm-act i:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
 .hm i.pick{outline:2px solid var(--ink);outline-offset:1px}
+/* Календарь жизни: 12 компактных месяцев в строке каждого года.
+   Цвет панели показывает относительную сумму баллов; число остаётся
+   читаемым и на узком экране. Будущие месяцы не закрашиваются. */
+.life-head{display:flex;align-items:end;gap:10px;flex-wrap:wrap}
+.life-head .fld{flex:1 1 180px;min-width:0}
+.life-head .hint{flex:1 1 240px;min-width:0}
+.life-year+.life-year{margin-top:12px}
+.life-year h3{font-size:13px;color:var(--ink-2);margin-bottom:7px}
+.life-months{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:4px}
+.life-month{min-width:0;min-height:49px;border:1px solid var(--line-soft);border-radius:7px;
+  background:var(--surface-2);padding:4px 2px;text-align:center;cursor:pointer;
+  transition:transform .12s,filter .12s;position:relative}
+.life-month:hover{transform:translateY(-1px);filter:brightness(.98)}
+.life-month .lm-n{display:block;font-size:10px;color:var(--ink-3);line-height:1.1}
+.life-month .lm-s{display:block;font-size:12px;font-weight:650;line-height:1.2;margin-top:5px;
+  font-variant-numeric:tabular-nums}
+.life-month.empty{background:var(--surface-2);color:var(--ink-3);cursor:default}
+.life-month.future{opacity:.42;cursor:default}
+.life-month.lm1{background:color-mix(in srgb,var(--accent) 22%,var(--surface-2))}
+.life-month.lm2{background:color-mix(in srgb,var(--accent) 42%,var(--surface-2))}
+.life-month.lm3{background:color-mix(in srgb,var(--accent) 64%,var(--surface-2))}
+.life-month.lm4{background:var(--accent);color:#fff}
+.life-month.lm4 .lm-n{color:color-mix(in srgb,#fff 78%,transparent)}
+.life-month.now{outline:2px solid var(--accent-2);outline-offset:1px}
+.life-legend{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.life-legend i{width:14px;height:14px;border-radius:3px;background:var(--surface-2);border:1px solid var(--line-soft)}
+.life-legend i.lm1{background:color-mix(in srgb,var(--accent) 22%,var(--surface-2))}
+.life-legend i.lm2{background:color-mix(in srgb,var(--accent) 42%,var(--surface-2))}
+.life-legend i.lm3{background:color-mix(in srgb,var(--accent) 64%,var(--surface-2))}
+.life-legend i.lm4{background:var(--accent)}
+@media(max-width:560px){.life-months{gap:3px}.life-month{min-height:45px;padding:3px 1px}.life-month .lm-s{font-size:11px;margin-top:4px}}
 canvas{width:100%;display:block}
 .modal{position:fixed;inset:0;z-index:100;display:none;align-items:flex-end;justify-content:center}
 .modal.on{display:flex}
@@ -254,6 +285,7 @@ code{background:var(--surface-2);border:1px solid var(--line-soft);border-radius
   <section class="view" id="v-diary"></section>
   <section class="view" id="v-goals"></section>
   <section class="view" id="v-stats"></section>
+  <section class="view" id="v-life"></section>
   <section class="view" id="v-notes"></section>
 </main>
 <nav class="tabs"><div class="tabs-in" id="tabbar"></div></nav>
@@ -536,7 +568,7 @@ const DEF_CFG={theme:'light',clientId:'',fileId:'',cloudSeen:'',everSignedIn:fal
   weights:ACT_W(), suppOrder:[], hidden:[]};
 
 /* sec — списки разделов целей и заметок, secDel — удалённые вручную ключи */
-const BLANK=()=>({days:{},goals:[],notes:{},supps:[],sec:{},secDel:{},updated:0});
+const BLANK=()=>({days:{},goals:[],notes:{},supps:[],sec:{},secDel:{},lifeBirth:'',updated:0});
 let DB=BLANK(), CFG={...DEF_CFG}, cur=today(), tab='day';
 let dq='', gfilter='', nsec='';
 /* Разделы можно переименовать, добавить и удалить, поэтому активный фильтр
@@ -874,12 +906,13 @@ function closeSheet(){$('#modal').classList.remove('on'); if(typeof micStop==='f
 $('#modal').addEventListener('click',e=>{if(e.target.dataset.close!==undefined||e.target.closest('[data-close]'))closeSheet()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSheet()});
 function applyTheme(){document.documentElement.dataset.theme=CFG.theme}
-$('#themeBtn').onclick=()=>{CFG.theme=CFG.theme==='dark'?'light':'dark';saveCfg();applyTheme();if(tab==='stats')render()};
+$('#themeBtn').onclick=()=>{CFG.theme=CFG.theme==='dark'?'light':'dark';saveCfg();applyTheme();if(tab==='stats'||tab==='life')render()};
 
 const TABS=[
  {id:'day',name:'День',icon:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'},
  {id:'diary',name:'Дневник',icon:'<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M9 8h7M9 12h7"/>'},
  {id:'stats',name:'Статистика',icon:'<path d="M4 19V9M10 19V5M16 19v-7M21 19H3"/>'},
+ {id:'life',name:'Жизнь',icon:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01M16 17h.01"/>'},
  {id:'goals',name:'Цели',icon:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.4"/>'},
  {id:'notes',name:'Заметки',icon:'<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h4"/><path d="M9 12h7M9 16h5"/>'}
 ];
@@ -893,7 +926,7 @@ function render(){
   const T=TABS.find(t=>t.id===tab);
   $('#ttl').textContent = tab==='day'?(cur===today()?'Сегодня':fmtD(cur)):T.name;
   $('#sub').textContent = tab==='day'?fmtFull(cur):'';
-  ({day:rDay,diary:rDiary,goals:rGoals,stats:rStats,notes:rNotes})[tab]();
+  ({day:rDay,diary:rDiary,goals:rGoals,stats:rStats,life:rLife,notes:rNotes})[tab]();
 }
 
 /* ================= ДЕНЬ ================= */
@@ -1357,6 +1390,69 @@ function editGoal(id){
     DB.notes=DB.notes||{}; DB.notes[to]=DB.notes[to]||[]; DB.notes[to].unshift(t);
     save(); closeSheet(); rGoals(); movedToast('notes',to);
   };
+}
+
+/* ================= КАЛЕНДАРЬ ЖИЗНИ ================= */
+const LIFE_MONTHS=70*12;
+/* Месячные панели привязаны к календарным месяцам. Сначала ставим
+   первое число, чтобы 29–31-е числа рождения не переполняли февраль. */
+const lifeMonthStart=(birth,i)=>{
+  const d=pISO(birth);
+  d.setDate(1);
+  d.setMonth(d.getMonth()+i);
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-01`;
+};
+const lifeMonthData=(birth,i)=>{
+  const start=lifeMonthStart(birth,i), end=lifeMonthStart(birth,i+1), now=today();
+  if(start>now) return {start,end,future:true,current:false,total:null,days:0};
+  const days=sortedDays().filter(d=>d>=start&&d<end);
+  return {
+    start,end,future:false,current:now<end,
+    total:days.length?Math.round(days.reduce((s,d)=>s+score(d),0)*10)/10:0,
+    days:days.length
+  };
+};
+const lifeLevel=(v,max)=>{
+  if(v==null||v<=0||max<=0)return '';
+  const q=v/max; return q>=.75?'lm4':q>=.5?'lm3':q>=.25?'lm2':'lm1';
+};
+const lifeMonthLabel=s=>MONS[pISO(s).getMonth()];
+function rLife(){
+  const birth=DB.lifeBirth||'';
+  $('#v-life').innerHTML=`
+  <div class="card">
+    <h2>🗓 Календарь жизни <span class="right">0–70 лет</span></h2>
+    <div class="life-head">
+      <label class="fld"><span>Дата рождения</span>
+        <input type="date" id="lifeBirth" value="${esc(birth)}" max="${today()}"></label>
+      <div class="hint small muted">Каждая панель — один месяц жизни. Внутри показана сумма баллов за дни этого месяца.</div>
+    </div>
+  </div>
+  ${birth?lifeGrid(birth):'<div class="empty">Введите дату рождения, чтобы построить календарь.</div>'}`;
+  const inp=$('#lifeBirth');
+  inp.onchange=()=>{
+    const v=inp.value;
+    if(v&&v<=today()){DB.lifeBirth=v;save();rLife()}
+    else if(!v){delete DB.lifeBirth;save();rLife()}
+  };
+  $$('.life-month[data-d]').forEach(b=>b.onclick=()=>{cur=b.dataset.d;go('day')});
+}
+function lifeGrid(birth){
+  const data=Array.from({length:LIFE_MONTHS},(_,i)=>lifeMonthData(birth,i));
+  const past=data.filter(x=>!x.future), max=Math.max(1,...past.map(x=>x.total||0));
+  const years=[];
+  for(let y=0;y<70;y++){
+    const cells=data.slice(y*12,y*12+12).map(x=>{
+      const cls=['life-month',x.future?'future':x.total===0?'empty':lifeLevel(x.total,max),x.start.slice(0,7)===today().slice(0,7)?'now':''].filter(Boolean).join(' ');
+      const age=y, title=x.future?`Возраст ${age} лет, ${lifeMonthLabel(x.start)} — ещё впереди`:
+        `${age} лет, ${lifeMonthLabel(x.start)} ${pISO(x.start).getFullYear()}: ${x.total||0} баллов, ${x.days} дн. с данными`;
+      return `<button class="${cls}" ${x.future?'disabled':''} ${x.future?'':'data-d="'+x.start+'"'} title="${title}">
+        <span class="lm-n">${lifeMonthLabel(x.start)}</span><span class="lm-s">${x.future?'':(x.total||0)}</span></button>`;
+    }).join('');
+    years.push(`<div class="life-year"><h3>${y}–${y+1} лет <span class="muted">· ${pISO(data[y*12].start).getFullYear()}</span></h3><div class="life-months">${cells}</div></div>`);
+  }
+  return `<div class="card"><div class="small muted" style="margin-bottom:10px">Нажмите на месяц, чтобы открыть первый день его периода. Сумма считается по тем дням, которые есть в дневнике.</div>${years.join('')}</div>
+    <div class="card"><div class="life-legend small muted"><span>Меньше баллов</span><i></i><i class="lm1"></i><i class="lm2"></i><i class="lm3"></i><i class="lm4"></i><span>Больше баллов</span><span style="margin-left:8px">· рамка — текущий месяц</span></div></div>`;
 }
 
 /* ================= СТАТИСТИКА (без графиков) ================= */
