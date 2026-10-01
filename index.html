@@ -631,7 +631,7 @@ const LIFE_SUMMARIES={
   '2026-07':'Таиланд (Паттайя) → Вьетнам (с 01.08). Тренировки: зал, подтягивания 15–22, отжимания 50–110, планка 4, бег, плавание, закаливание.\nСон: 4–8 ч; в среднем ~7 ч.\nВес: 67–69 кг.\nРазвитие: английский, Золофт, Тонгкат Али, E-Visa.\nКлючевые моменты: Паттайя, работа в кафе, встреча с Денисом, поездка в Наша Раша 09.07, переезды по отелям, тренировки, знакомства, оформление E-Visa во Вьетнам, автобус в Бангкок.',
   '2026-08':'Вьетнам (Нячанг). Тренировки: зал, подтягивания 15–20, отжимания 50–100, планка 4, бег, плавание, закаливание.\nСон: 4–9 ч; в среднем ~7 ч.\nВес: 67–70 кг.\nРазвитие: английский, Золофт, ноопепт, гинкго билоба, Claude и трейдинг.\nКлючевые моменты: Нячанг, знакомства, работа в кафе, закрытие кредита, счёт в BIDV и карта Bybit, байк, пляжи и водопады, термальные источники, изучение Claude и первые шаги в трейдинге, работа над бюджетом.'
 };
-const BLANK=()=>({days:{},goals:[],notes:{},supps:[],sec:{},secDel:{},lifeBirth:LIFE_BIRTH,updated:0});
+const BLANK=()=>({days:{},goals:[],notes:{},supps:[],sec:{},secDel:{},lifeBirth:LIFE_BIRTH,lifeSummaries:{},updated:0});
 let DB=BLANK(), CFG={...DEF_CFG}, cur=today(), tab='day';
 let dq='', gfilter='', nsec='';
 /* Разделы можно переименовать, добавить и удалить, поэтому активный фильтр
@@ -1483,27 +1483,52 @@ function rLife(){
   ${lifeGrid()}`;
   $$('.life-month[data-d]').forEach(b=>bindLifeMonth(b));
 }
+function lifeSummaryText(key){
+  DB.lifeSummaries=DB.lifeSummaries||{};
+  return DB.lifeSummaries[key]??LIFE_SUMMARIES[key]??'';
+}
 function lifeSummarySheet(key,label){
-  const text=LIFE_SUMMARIES[key]||'Итог за этот месяц пока не добавлен.';
-  openSheet(`<h2>Итоги: ${label}</h2><div class="life-summary">${esc(text)}</div>
+  const text=lifeSummaryText(key);
+  openSheet(`<h2>Итоги: ${label}</h2>
+    <div class="life-summary">${esc(text||'Итог за этот месяц пока не добавлен.')}</div>
     <div class="row" style="margin-top:14px"><span class="spacer"></span><button class="btn primary" data-close>Закрыть</button></div>`);
+}
+function editLifeSummary(key,label){
+  DB.lifeSummaries=DB.lifeSummaries||{};
+  const old=lifeSummaryText(key);
+  openSheet(`<h2>Итоги: ${label}</h2>
+    <textarea id="lifeSummaryEdit" style="min-height:260px" placeholder="Введите итог месяца">${esc(old)}</textarea>
+    <div class="row" style="margin-top:14px">
+      <button class="btn danger" id="lifeSummaryDel" ${old?'':'disabled'}>Удалить</button>
+      <span class="spacer"></span><button class="btn" data-close>Отмена</button>
+      <button class="btn primary" id="lifeSummarySave">Сохранить</button>
+    </div>`);
+  $('#lifeSummarySave').onclick=()=>{
+    const text=$('#lifeSummaryEdit').value.trim();
+    if(text) DB.lifeSummaries[key]=text; else delete DB.lifeSummaries[key];
+    save(); closeSheet(); rLife(); toast(text?'Итог сохранён':'Итог удалён');
+  };
+  $('#lifeSummaryDel').onclick=()=>{
+    delete DB.lifeSummaries[key]; save(); closeSheet(); rLife(); toast('Итог удалён');
+  };
 }
 function bindLifeMonth(b){
   const d=b.dataset.d, key=d.slice(0,7), label=`${MONS[pISO(d).getMonth()]} ${pISO(d).getFullYear()}`;
-  let clickTimer=null, held=false, moved=false;
-  b.onclick=e=>{
+  let clickTimer=null, held=false;
+  b.onclick=()=>{
     if(held){held=false;return}
     if(clickTimer){clearTimeout(clickTimer);clickTimer=null;lifeSummarySheet(key,label);return}
     clickTimer=setTimeout(()=>{clickTimer=null;cur=d;go('day')},260);
   };
   b.addEventListener('pointerdown',()=>{
-    moved=false; held=false;
-    b._lifeHold=setTimeout(()=>{held=true;lifeSummarySheet(key,label);if(navigator.vibrate)navigator.vibrate(15)},500);
+    held=false; clearTimeout(b._lifeHold);
+    b._lifeHold=setTimeout(()=>{
+      held=true; if(navigator.vibrate)navigator.vibrate(15);
+      editLifeSummary(key,label);
+    },500);
   });
-  ['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>{
-    clearTimeout(b._lifeHold);
-  }));
-  b.addEventListener('pointermove',()=>{moved=true;clearTimeout(b._lifeHold)});
+  ['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>clearTimeout(b._lifeHold)));
+  b.addEventListener('pointermove',()=>clearTimeout(b._lifeHold));
 }
 function lifeGrid(){
   const from='2022-01-01', last=today().slice(0,7)+'-01';
