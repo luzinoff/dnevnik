@@ -170,6 +170,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
   background:var(--accent);border:3px solid var(--surface);box-shadow:0 1px 4px rgba(0,0,0,.2);margin-top:-8px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{border:1px solid var(--line);background:var(--surface-2);border-radius:999px;padding:4px 10px;font-size:12.5px;color:var(--ink-2)}
+.chip.med{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 48%,var(--line))}
+.chip.med.on{background:color-mix(in srgb,var(--warn) 16%,var(--surface));border-color:var(--warn);color:var(--warn)}
 .chip.on{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 45%,transparent);color:var(--accent)}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:10px}
 .tile{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:12px;padding:11px 12px}
@@ -484,7 +486,7 @@ const SUPP_MERGE={
   'золофт':[],
   'ноопепт':['нооп'],
   'куркумин':['куркум'],
-  'обезболивающее':['обезбол','аспирин','ибупрофен','цитрамон','анальгин','парацетамол','ибу','парац'],
+  'обезболивающее':['обезбол','обесболивающее','аспирин','ибупрофен','цитрамон','анальгин','парацетамол','ибу','парац'],
   'витамин c':['витс','вит с'],
   'силденафил':['силден','виагра'],
   'ацикловир':['ацикл','ацикиловир','ацикло'],
@@ -554,7 +556,7 @@ const canonSupp=n=>{
   return t.toLowerCase();
 };
 /* ревизия словаря: увеличить при правке SUPP_MERGE — пересчёт пройдёт заново */
-const SUPP_V=8;
+const SUPP_V=9;
 /* Ревизия порядка скрытого раздела «Ж». Старый массив хранился от старых
    записей к новым, хотя новые добавляются через unshift наверх. Разворачиваем
    его один раз; после этого старые и новые записи идут от новых к старым. */
@@ -998,7 +1000,7 @@ function render(){
 /* ================= ДЕНЬ ================= */
 const EXS=[['Растяжка',''],['Кардио',''],['Подтягивания',''],
            ['Отжимания',''],['Бицепс',''],['Приседания',''],['Пресс',''],
-           ['Плавание / закаливание',''],['Прочее','']];
+           ['Плавание / закаливание',''],['Загорание',''],['Прочее','']];
 
 function rDay(){
   const x=day(cur), isT=cur===today(), sc=score(cur);
@@ -1111,10 +1113,15 @@ function workBadge(d){
     title="${w?'Рабочий':'Выходной'} — ${man?'проставлено вручную, удержание вернёт к графику 2/2':'по графику 2/2'}. Нажмите, чтобы переключить">
     ${w?'💼':'🌿'}<span class="lb">${w?'Раб':'Вых'}</span></button>`;
 }
+const MED_SUPPS=new Set([
+  'обезболивающее','ацикловир','антибиотик','зодак','сорбент',
+  'лизобакт','нистатин','терафлю','флуконазол'
+]);
+const suppIsMed=n=>MED_SUPPS.has(canonSupp(n));
 function suppChips(list){
   const all=DB.supps.map(s=>s.name);
   const shown=[...new Set([...list, ...all.slice(0,18)])];
-  return shown.map(n=>`<button class="chip sp ${list.includes(n)?'on':''}" data-n="${esc(n)}">${esc(n)}</button>`).join('')
+  return shown.map(n=>`<button class="chip sp ${suppIsMed(n)?'med ':''}${list.includes(n)?'on':''}" data-n="${esc(n)}">${esc(n)}</button>`).join('')
     + `<button class="chip" id="spMore">ещё ${Math.max(0,all.length-18)}…</button>`;
 }
 function prevDayWith(f){
@@ -1209,7 +1216,7 @@ function suppSheet(){
   openSheet(`<h2>Добавки</h2>
     <input type="text" id="sq2" placeholder="Поиск или новое название" style="margin-bottom:12px">
     <div class="chips" id="spAll" style="max-height:46vh;overflow:auto">${all.map(n=>
-      `<button class="chip sp2 ${(x.supp||[]).includes(n)?'on':''}" data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>
+      `<button class="chip sp2 ${suppIsMed(n)?'med ':''}${(x.supp||[]).includes(n)?'on':''}" data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>
     <div class="row" style="margin-top:14px"><button class="btn" id="newSp">Добавить новую</button>
       <span class="spacer"></span><button class="btn primary" data-close>Готово</button></div>`);
   const f=$('#sq2');
