@@ -94,6 +94,8 @@ textarea{resize:vertical;min-height:90px;line-height:1.6}
 .btn.primary:hover{filter:brightness(1.07)}
 .btn.ghost{background:none;border-color:transparent;color:var(--ink-2);padding:6px 8px}
 .btn.ghost:hover{background:var(--surface-2)}
+.bookRead{width:29px;height:29px;padding:0;border-radius:50%;font-size:20px;line-height:1;color:var(--ink-3);flex:none}
+.bookRead.on{color:#2f9e44;font-weight:700}
 .btn.sm{padding:6px 10px;font-size:13px;border-radius:9px}
 /* квадратные кнопки навигации по дням: не растягиваются и не переносят текст */
 .btn.nav{width:34px;height:34px;padding:0;flex:none;display:grid;place-items:center;
@@ -472,7 +474,7 @@ function migrateActs(){
 }
 /* объединение и переименование добавок: итоговое имя -> варианты из таблицы */
 const SUPP_MERGE={
-  'кофе':['кофе x2'],
+  'кофеин':['кофе','кофе x2'],
   'магний':['магн','маний'],
   'витамин d':['видд','видтд','вид'],
   'омега-3':['омега'],
@@ -559,7 +561,26 @@ const canonSupp=n=>{
   return t.toLowerCase();
 };
 /* ревизия словаря: увеличить при правке SUPP_MERGE — пересчёт пройдёт заново */
-const SUPP_V=10;
+const SUPP_V=11;
+/* Однократная правка часового пояса для времени сна, начиная с 25.04.2026. */
+const SLEEP_TZ_V=1;
+const SLEEP_TZ_FROM='2026-04-25';
+const shiftTime4=t=>{
+  const m=/^(\d{1,2}):(\d{2})$/.exec(String(t||'').trim());
+  if(!m) return t||'';
+  const mins=(+m[1]*60+ +m[2]+240)%1440;
+  return pad(Math.floor(mins/60))+':'+pad(mins%60);
+};
+function migrateSleepTZ(){
+  if(DB.sleepTzV>=SLEEP_TZ_V) return false;
+  for(const[d,x]of Object.entries(DB.days||{})){
+    if(d<SLEEP_TZ_FROM||!x) continue;
+    if(x.bed) x.bed=shiftTime4(x.bed);
+    if(x.rise) x.rise=shiftTime4(x.rise);
+  }
+  DB.sleepTzV=SLEEP_TZ_V;
+  return true;
+}
 /* Ревизия порядка скрытого раздела «Ж». Старый массив хранился от старых
    записей к новым, хотя новые добавляются через unshift наверх. Разворачиваем
    его один раз; после этого старые и новые записи идут от новых к старым. */
@@ -567,6 +588,9 @@ const ZH_V=1;
 /* Ревизия подписей разделов: оставлена для совместимости с уже сохранёнными
    копиями, где предыдущая версия приложения могла записать secV. */
 const SEC_V=4;
+/* Книжные заметки хранятся объектами, чтобы отметка чтения не зависела
+   от текста и позиции записи. Старые строки переводятся один раз. */
+const BOOKS_V=1;
 
 const ACT_W=()=>Object.fromEntries(ACTS.map(a=>[a.k,a.w0?0:1]));
 /* cloudSeen — время правки облачного файла, каким мы его видели в последний
@@ -662,6 +686,18 @@ function migrateSections(){
   DB.secV=SEC_V;
   return true;
 }
+function migrateBooks(){
+  if(DB.booksV>=BOOKS_V) return false;
+  DB.notes=DB.notes||{};
+  const list=DB.notes.books;
+  if(Array.isArray(list)){
+    DB.notes.books=list.map(v=>typeof v==='string'
+      ? {id:uid(),text:v,read:false}
+      : {id:v.id||uid(),text:String(v.text??''),read:!!v.read});
+  }
+  DB.booksV=BOOKS_V;
+  return true;
+}
 /* «Ж» скрыт: открывается тремя тапами по заголовку «Заметки», закрывается при уходе с вкладки */
 const HIDDEN_SEC='zh_list';
 let zhOpen=false, zhTaps=0, zhT=null;
@@ -670,9 +706,10 @@ function load(){
   let raw=null;
   try{raw=localStorage.getItem(LS)}catch(e){}
   if(raw){ try{DB=Object.assign(BLANK(),JSON.parse(raw));
-    let need = DB.suppV!==SUPP_V || !(DB.actsV>=ACTS_V) || !(DB.goalsV>=GOALS_V) || !(DB.zhV>=ZH_V) || !(DB.secV>=SEC_V);
+    let need = DB.suppV!==SUPP_V || !(DB.actsV>=ACTS_V) || !(DB.goalsV>=GOALS_V) || !(DB.zhV>=ZH_V) || !(DB.secV>=SEC_V) || !(DB.sleepTzV>=SLEEP_TZ_V) || !(DB.booksV>=BOOKS_V);
     if(DB.lifeBirth!==LIFE_BIRTH){DB.lifeBirth=LIFE_BIRTH;need=true}
     if(DB.suppV!==SUPP_V) migrateSupps();
+    migrateSleepTZ(); migrateBooks();
     migrateActs(); migrateGoals();
     if(migrateZh()) need=true;
     if(migrateSections()) need=true;
@@ -703,6 +740,7 @@ function seedFromFile(){
     }
     DB.lifeBirth=LIFE_BIRTH;
     if(DB.suppV!==SUPP_V) migrateSupps();
+    migrateSleepTZ(); migrateBooks();
     migrateActs(); migrateGoals(); migrateZh(); migrateSections(); migrateClean();
     /* Время правки берём из выгрузки, если оно там есть: иначе свежая копия
        выглядит новее облачной и синхронизация не подтянет более поздние дни. */
@@ -958,6 +996,7 @@ async function pull(silent,force){
       DB=Object.assign(BLANK(),j);
       DB.lifeBirth=LIFE_BIRTH;
       if(DB.suppV!==SUPP_V) migrateSupps();
+      migrateSleepTZ(); migrateBooks();
       migrateActs(); migrateGoals(); migrateZh(); migrateSections(); migrateClean(); initFilters();
       localStorage.setItem(LS,JSON.stringify(DB)); render();
       res='got'; if(!silent)toast('Загружено из облака');
@@ -1024,7 +1063,7 @@ function rDay(){
   </div>
 
   <div class="card">
-    <h2>😴 Тело <span class="right" id="sleepTot">${x.sleepH!=null?fmtH(x.sleepH):''}</span></h2>
+    <h2>😴 Тело и сон <span class="right" id="sleepTot">${x.sleepH!=null?fmtH(x.sleepH):''}</span></h2>
     <div class="body-top">
       <div class="bt-col fix"><span class="bt-lb">Оценка сна</span>
         <div class="rate" id="sq">${[1,2,3,4,5].map(i=>`<button data-v="${i}" class="${x.slept===i?'on':''}">${i}</button>`).join('')}</div></div>
@@ -1132,7 +1171,7 @@ const SUPP_CATEGORIES=[
   ]},
   {id:'joints',label:'🦴 Суставы и восстановление',color:'#93C47D',items:['коллаген','хондроитин']},
   {id:'gut',label:'🦠 ЖКТ и пробиотики',color:'#A2C4C9',items:['пробиотик','сорбент']},
-  {id:'energy',label:'⚡ Энергия и спорт',color:'#F6B26B',items:['кофе','креатин','бетаин','энергетик']},
+  {id:'energy',label:'⚡ Энергия и спорт',color:'#F6B26B',items:['кофеин','креатин','бетаин','энергетик']},
   {id:'herbs',label:'🌿 Адаптогены и травы',color:'#B6D7A8',items:['ежовик','куркумин','цистанхе','женьшень']},
   {id:'other',label:'💊 Прочее / лекарства',color:'#CCCCCC',items:[
     'обезболивающее','миорелаксант','антибиотик','ацикловир','зодак','нистатин',
@@ -1500,7 +1539,8 @@ function editGoal(id){
     }
     /* уходит в заметки: отметка «выполнено» там не нужна, остаётся текст */
     DB.goals=DB.goals.filter(y=>y.id!==id);
-    DB.notes=DB.notes||{}; DB.notes[to]=DB.notes[to]||[]; DB.notes[to].unshift(t);
+    DB.notes=DB.notes||{}; DB.notes[to]=DB.notes[to]||[];
+    DB.notes[to].unshift(to==='books'?{id:uid(),text:t,read:false}:t);
     save(); closeSheet(); rGoals(); movedToast('notes',to);
   };
 }
@@ -1934,7 +1974,7 @@ function mergeBand(kind,rows,st){
     if(kind==='sleep'){
       const mn=num(r.total_duration_min);
       if(mn>0) set('sleepH',Math.round(mn/60*100)/100);
-      set('bed',hhmm(r.bedtime_local)); set('rise',hhmm(r.wakeup_local));
+      set('bed',shiftTime4(hhmm(r.bedtime_local))); set('rise',shiftTime4(hhmm(r.wakeup_local)));
       const sc=num(r.sleep_score); if(sc>0) set('sleepScore',Math.round(sc));
       const dp=num(r.deep_min); if(dp>0) set('deepMin',Math.round(dp));
       const rm=num(r.rem_min);  if(rm>0) set('remMin',Math.round(rm));
@@ -2021,6 +2061,7 @@ function importJSON(){
       DB=Object.assign(BLANK(),j);
       DB.lifeBirth=LIFE_BIRTH;
       if(DB.suppV!==SUPP_V) migrateSupps();
+      migrateSleepTZ(); migrateBooks();
       migrateActs(); migrateGoals(); migrateZh(); migrateSections(); migrateClean(); initFilters();
       save();render();toast('Импортировано');
     }catch(e){toast('Ошибка: '+e.message)}};
@@ -2324,6 +2365,7 @@ function micPaint(){
 function rNotes(){
   initFilters();
   DB.notes.free=DB.notes.free||[];
+  if(nsec==='books') migrateBooks();
   const list=DB.notes[nsec]||[];
   const vis=NSEC().filter(([k])=>k!==HIDDEN_SEC||zhOpen);
   $('#v-notes').innerHTML=`
@@ -2339,10 +2381,13 @@ function rNotes(){
       <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/>
       <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Голосом</button>`:''}
     ${zhOpen?'<span class="spacer"></span><button class="btn sm ghost" id="nLock">Скрыть</button>':''}</div>
-  ${list.length?`<div class="card">${list.map((t,i)=>
-    `<div class="row" style="align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line-soft)">
-      <span class="nedit" data-i="${i}" style="flex:1;cursor:pointer">${hl(t)}</span>
-      <button class="btn ghost nd" data-i="${i}" title="Удалить">✕</button></div>`).join('')}</div>`
+  ${list.length?`<div class="card">${list.map((item,i)=>{
+    const book=nsec==='books', b=book&&(typeof item==='object'?item:{text:item,read:false});
+    const text=book?b.text:item;
+    return `<div class="row" style="align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line-soft)">
+      ${book?`<button class="btn ghost bookRead${b.read?' on':''}" data-i="${i}" title="${b.read?'Отметить как непрочитанную':'Отметить как прочитанную'}" aria-label="${b.read?'Непрочитанная':'Прочитанная'}">${b.read?'✓':'○'}</button>`:''}
+      <span class="nedit" data-i="${i}" style="flex:1;cursor:pointer;${book&&b.read?'color:var(--ink-3);text-decoration:line-through':''}">${hl(text)}</span>
+      <button class="btn ghost nd" data-i="${i}" title="Удалить">✕</button></div>`}).join('')}</div>`
     :'<div class="empty">Пусто</div>'}`;
   $$('.ns').forEach(b=>b.onclick=()=>{if(b.id==='nsecBtn') sectionsSheet('notes',rNotes);else{nsec=b.dataset.s;rNotes()}});
   /* три быстрых тапа по слову «Заметки» открывают скрытый раздел */
@@ -2356,6 +2401,12 @@ function rNotes(){
   $$('.nd').forEach(b=>b.onclick=()=>{
     if(!confirm('Удалить?'))return;
     DB.notes[nsec].splice(+b.dataset.i,1);save();rNotes()});
+  $$('.bookRead').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); const x=DB.notes.books[+b.dataset.i];
+    if(typeof x==='string') DB.notes.books[+b.dataset.i]={id:uid(),text:x,read:true};
+    else x.read=!x.read;
+    save(); rNotes();
+  });
   $$('.nedit').forEach(b=>b.onclick=()=>editNote(+b.dataset.i));
   $('#nAdd').onclick=()=>addNote(false);
   const nv=$('#nVoice'); if(nv) nv.onclick=()=>addNote(true);
@@ -2381,16 +2432,19 @@ function addNote(voice){
   if(voice && SR) micStart($('#ntx'));
   setTimeout(()=>$('#ntx').focus(),80);
   $('#nok').onclick=()=>{const t=$('#ntx').value.trim();if(!t)return toast('Пусто');
-    DB.notes[nsec]=DB.notes[nsec]||[];DB.notes[nsec].unshift(t);save();closeSheet();rNotes()};
+    DB.notes[nsec]=DB.notes[nsec]||[];
+    DB.notes[nsec].unshift(nsec==='books'?{id:uid(),text:t,read:false}:t);
+    save();closeSheet();rNotes()};
 }
 /* Правка заметки: текст, тип и раздел в одном окне. Смена раздела —
    это перенос: запись уходит из текущего списка в начало выбранного.
    Смена типа на «Цель» переносит текст в Цели невыполненной. */
 function editNote(i){
-  const from=nsec, cur=(DB.notes[from]||[])[i];
-  if(cur==null) return;
+  const from=nsec, raw=(DB.notes[from]||[])[i];
+  if(raw==null) return;
+  const book=from==='books', cur=book?(typeof raw==='object'?raw:{text:raw,read:false}):raw;
   openSheet(`<h2>Заметка</h2>
-    <textarea id="ntx">${esc(cur)}</textarea>
+    <textarea id="ntx">${esc(book?cur.text:cur)}</textarea>
     ${micHTML()}
     <div style="margin-bottom:12px"></div>
     ${typeFields('notes',from)}
@@ -2408,10 +2462,15 @@ function editNote(i){
     const t=$('#ntx').value.trim(); if(!t) return toast('Пусто');
     const kind=$('#ekind').value, to=$('#esec').value;
     if(kind==='notes'){
-      if(to===from) DB.notes[from][i]=t;
-      else{
+      if(to===from){
+        if(from==='books'){
+          const b=DB.notes[from][i];
+          DB.notes[from][i]=typeof b==='object'?{...b,text:t}:{id:uid(),text:t,read:false};
+        }else DB.notes[from][i]=t;
+      }else{
         DB.notes[from].splice(i,1);
-        DB.notes[to]=DB.notes[to]||[]; DB.notes[to].unshift(t);
+        DB.notes[to]=DB.notes[to]||[];
+        DB.notes[to].unshift(to==='books'?{id:uid(),text:t,read:false}:t);
       }
       save(); closeSheet(); rNotes();
       if(to!==from) movedToast('notes',to);
