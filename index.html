@@ -170,9 +170,13 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
   background:var(--accent);border:3px solid var(--surface);box-shadow:0 1px 4px rgba(0,0,0,.2);margin-top:-8px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{border:1px solid var(--line);background:var(--surface-2);border-radius:999px;padding:4px 10px;font-size:12.5px;color:var(--ink-2)}
-.chip.med{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 48%,var(--line))}
-.chip.med.on{background:color-mix(in srgb,var(--warn) 16%,var(--surface));border-color:var(--warn);color:var(--warn)}
 .chip.on{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 45%,transparent);color:var(--accent)}
+.supp-group{width:100%;margin:0 0 13px}
+.supp-group-title{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;color:var(--ink-2);margin:2px 2px 6px;line-height:1.25}
+.supp-group-title::before{content:'';width:8px;height:8px;flex:none;border-radius:50%;background:var(--supp-color)}
+.supp-group .chips{gap:6px}
+.supp-group .chip{background:color-mix(in srgb,var(--supp-color) 10%,var(--surface-2));border-color:color-mix(in srgb,var(--supp-color) 58%,var(--line));color:var(--ink-2)}
+.supp-group .chip.on{background:color-mix(in srgb,var(--supp-color) 27%,var(--surface-2));border-color:var(--supp-color);color:var(--ink)}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:10px}
 .tile{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:12px;padding:11px 12px}
 .tile .v{font-size:21px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.2}
@@ -486,7 +490,7 @@ const SUPP_MERGE={
   'золофт':[],
   'ноопепт':['нооп'],
   'куркумин':['куркум'],
-  'обезболивающее':['обезбол','обесболивающее','аспирин','ибупрофен','цитрамон','анальгин','парацетамол','ибу','парац'],
+  'обезболивающее':['обезбол','аспирин','ибупрофен','цитрамон','анальгин','парацетамол','ибу','парац'],
   'витамин c':['витс','вит с'],
   'силденафил':['силден','виагра'],
   'ацикловир':['ацикл','ацикиловир','ацикло'],
@@ -516,7 +520,7 @@ const SUPP_MERGE={
   'сорбент':['полисорб','альфасорб','энтерос','лекарства от отравления'],
   'лизобакт':[], 'женьшень':[], 'кальций':[],
   'флуконазол':['флуко'], 'терафлю':[], 'нистатин':[], 'хгч':[],
-  'энергетик':[]
+  'энергетик':[], 'глицин':[], 'цистанхе':[]
 };
 /* удаляются из истории как мусорные записи */
 const SUPP_DROP=['сон'];
@@ -556,7 +560,7 @@ const canonSupp=n=>{
   return t.toLowerCase();
 };
 /* ревизия словаря: увеличить при правке SUPP_MERGE — пересчёт пройдёт заново */
-const SUPP_V=9;
+const SUPP_V=10;
 /* Ревизия порядка скрытого раздела «Ж». Старый массив хранился от старых
    записей к новым, хотя новые добавляются через unshift наверх. Разворачиваем
    его один раз; после этого старые и новые записи идут от новых к старым. */
@@ -1113,15 +1117,56 @@ function workBadge(d){
     title="${w?'Рабочий':'Выходной'} — ${man?'проставлено вручную, удержание вернёт к графику 2/2':'по графику 2/2'}. Нажмите, чтобы переключить">
     ${w?'💼':'🌿'}<span class="lb">${w?'Раб':'Вых'}</span></button>`;
 }
-const MED_SUPPS=new Set([
-  'обезболивающее','ацикловир','антибиотик','зодак','сорбент',
-  'лизобакт','нистатин','терафлю','флуконазол'
-]);
-const suppIsMed=n=>MED_SUPPS.has(canonSupp(n));
+const SUPP_CATEGORIES=[
+  {id:'brain',label:'🧠 Мозг, ноотропы и сон',color:'#6FA8DC',items:[
+    'ноопепт','фенотропил','пирацетам','alpha gpc','cdp-холин','гинкго билоба',
+    'clevermind','нанотропил','кортексин','мексидол','тирозин','теанин','глицин',
+    'проспекта','5-htp','золофт'
+  ]},
+  {id:'vitamins',label:'💊 Витамины, минералы и антиоксиданты',color:'#FFD966',items:[
+    'витамин d','витамин c','витамин b','витамин a+e','поливитамины','железо',
+    'цинк','кальций','ниацин','мильгамма','лютеин','магний','zma'
+  ]},
+  {id:'heart',label:'❤️ Сердце и сосуды',color:'#E06666',items:['омега-3','мельдоний']},
+  {id:'hormones',label:'💪 Гормоны и либидо',color:'#E69138',items:[
+    'тестобустер','тонгкат али','каберголин','хгч','силденафил'
+  ]},
+  {id:'joints',label:'🦴 Суставы и восстановление',color:'#93C47D',items:['коллаген','хондроитин']},
+  {id:'gut',label:'🦠 ЖКТ и пробиотики',color:'#A2C4C9',items:['пробиотик','сорбент']},
+  {id:'energy',label:'⚡ Энергия и спорт',color:'#F6B26B',items:['кофе','креатин','бетаин','энергетик']},
+  {id:'herbs',label:'🌿 Адаптогены и травы',color:'#B6D7A8',items:['ежовик','куркумин','цистанхе','женьшень']},
+  {id:'other',label:'💊 Прочее / лекарства',color:'#CCCCCC',items:[
+    'обезболивающее','миорелаксант','антибиотик','ацикловир','зодак','нистатин',
+    'флуконазол','терафлю','лизобакт'
+  ]},
+  {id:'unknown',label:'Прочие добавки',color:'#B7B7B7',items:[]}
+];
+const SUPP_CAT_BY_NAME=(()=>{
+  const m=new Map();
+  for(const cat of SUPP_CATEGORIES) for(const n of cat.items){
+    if(m.has(n)) throw new Error('Добавка в нескольких категориях: '+n);
+    m.set(n,cat);
+  }
+  return m;
+})();
+const SUPP_UNKNOWN_CATEGORY=SUPP_CATEGORIES.find(cat=>cat.id==='unknown');
+const suppCategory=n=>SUPP_CAT_BY_NAME.get(canonSupp(n))||SUPP_UNKNOWN_CATEGORY;
+function suppGroupHtml(names,selected,cls){
+  const groups=new Map(SUPP_CATEGORIES.map(cat=>[cat.id,{cat,names:[]}]));
+  for(const n of names){
+    const cat=suppCategory(n);
+    groups.get(cat.id).names.push(n);
+  }
+  return [...groups.values()].filter(g=>g.names.length).map(({cat,names:items})=>`
+    <div class="supp-group" style="--supp-color:${cat.color}">
+      <div class="supp-group-title">${esc(cat.label)}</div>
+      <div class="chips">${items.map(n=>`<button class="chip ${cls} ${selected.includes(n)?'on':''}" data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>
+    </div>`).join('');
+}
 function suppChips(list){
   const all=DB.supps.map(s=>s.name);
   const shown=[...new Set([...list, ...all.slice(0,18)])];
-  return shown.map(n=>`<button class="chip sp ${suppIsMed(n)?'med ':''}${list.includes(n)?'on':''}" data-n="${esc(n)}">${esc(n)}</button>`).join('')
+  return suppGroupHtml(shown,list,'sp')
     + `<button class="chip" id="spMore">ещё ${Math.max(0,all.length-18)}…</button>`;
 }
 function prevDayWith(f){
@@ -1215,13 +1260,13 @@ function suppSheet(){
   const x=day(cur), all=DB.supps.map(s=>s.name);
   openSheet(`<h2>Добавки</h2>
     <input type="text" id="sq2" placeholder="Поиск или новое название" style="margin-bottom:12px">
-    <div class="chips" id="spAll" style="max-height:46vh;overflow:auto">${all.map(n=>
-      `<button class="chip sp2 ${suppIsMed(n)?'med ':''}${(x.supp||[]).includes(n)?'on':''}" data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>
+    <div class="chips" id="spAll" style="max-height:46vh;overflow:auto">${suppGroupHtml(all,x.supp||[],'sp2')}</div>
     <div class="row" style="margin-top:14px"><button class="btn" id="newSp">Добавить новую</button>
       <span class="spacer"></span><button class="btn primary" data-close>Готово</button></div>`);
   const f=$('#sq2');
   f.oninput=()=>{const q=f.value.toLowerCase();
-    $$('.sp2').forEach(b=>b.style.display=b.dataset.n.toLowerCase().includes(q)?'':'none')};
+    $$('.sp2').forEach(b=>b.style.display=b.dataset.n.toLowerCase().includes(q)?'':'none');
+    $$('.supp-group').forEach(g=>g.style.display=[...g.querySelectorAll('.sp2')].some(b=>b.style.display!=='none')?'':'none')};
   $('#spAll').onclick=e=>{const b=e.target.closest('.sp2');if(!b)return;
     x.supp=x.supp||[]; const i=x.supp.indexOf(b.dataset.n);
     i<0?x.supp.push(b.dataset.n):x.supp.splice(i,1);
