@@ -1257,7 +1257,12 @@ function bindDay(){
   });
   const unk=$('#spUnk'); if(unk)unk.onclick=unknownSheet;
   const add=$('#spAdd'); if(add)add.onclick=suppSheet;
-  const rep=$('#rep'); if(rep)rep.onclick=()=>{x.supp=[...(DB.days[prevDayWith('supp')].supp||[])];save();rDay()};
+  const rep=$('#rep'); if(rep)rep.onclick=()=>{
+    const prev=prevDayWith('supp');
+    if(!prev) return;
+    if(!confirm(`Заменить добавки за ${fmtD(cur)} списком за ${fmtD(prev)}?\n\nТекущий список будет затёрт.`)) return;
+    x.supp=[...(DB.days[prev].supp||[])]; save(); rDay();
+  };
   const clr=$('#spClr'); if(clr)clr.onclick=()=>{x.supp=[];save();rDay()};
   $('#spt').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;
     x.sport=+b.dataset.v; if(!x.sport){delete x.ex; delete x.exBand} save(); rDay()};
