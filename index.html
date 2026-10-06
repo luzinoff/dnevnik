@@ -515,7 +515,7 @@ const SUPP_MERGE={
   'мексидол':[],
   'мильгамма':['мильгам','мильг'],
   'кортексин':['кортекс'],
-  'ниацин':[], 'бетаин':[], 'зодак':[],
+  'ниацин':[], 'бетаина гидрохлорид':['бетаин'], 'зодак':[],
   'каберголин':['кабер','каберлголин','каберлогин'],
   '5-htp':['5нтр','5htp+магний','триптофан'],
   'сорбент':['полисорб','альфасорб','энтерос','лекарства от отравления'],
@@ -561,7 +561,7 @@ const canonSupp=n=>{
   return t.toLowerCase();
 };
 /* ревизия словаря: увеличить при правке SUPP_MERGE — пересчёт пройдёт заново */
-const SUPP_V=11;
+const SUPP_V=12;
 /* Однократная правка часового пояса для времени сна, начиная с 25.04.2026. */
 const SLEEP_TZ_V=1;
 const SLEEP_TZ_FROM='2026-04-25';
@@ -751,7 +751,14 @@ function seedFromFile(){
 /* сводит варианты названий к единым и сортирует справочник по частоте приёма */
 function migrateSupps(force){
   if(DB.suppV===SUPP_V && !force) return;
-  const freq={};
+  const freq={}, customCat={};
+  /* Категория пользовательской добавки живёт в справочнике, а не в дне.
+     При пересборке справочника не теряем её и одновременно канонизируем имя. */
+  for(const s of DB.supps||[]){
+    const n=canonSupp(s&&s.name);
+    const cat=SUPP_CATEGORIES?.find(c=>c.id===s?.category);
+    if(n&&cat&&cat.id!=='unknown') customCat[n]=cat.id;
+  }
   for(const d of Object.values(DB.days||{})){
     if(!Array.isArray(d.supp)) continue;
     const seen=[];
@@ -765,7 +772,8 @@ function migrateSupps(force){
   const names=new Set([...Object.keys(freq), ...Object.keys(SUPP_MERGE),
     ...(DB.supps||[]).map(s=>canonSupp(s.name))].filter(Boolean));
   DB.supps=[...names].sort((a,b)=>(freq[b]||0)-(freq[a]||0)||a.localeCompare(b,'ru'))
-    .map(n=>({id:uid(),name:n,slot:'day',n:freq[n]||0}));
+    .map(n=>({id:uid(),name:n,slot:'day',n:freq[n]||0,
+      ...(!SUPP_CAT_BY_NAME?.has(n)&&customCat[n]?{category:customCat[n]}:{})}));
   /* всё, что не удалось привести к полному названию */
   DB.suppUnknown=[...names].filter(n=>!SUPP_MERGE[n])
     .map(n=>({name:n,n:freq[n]||0})).sort((a,b)=>b.n-a.n);
@@ -1170,8 +1178,8 @@ const SUPP_CATEGORIES=[
     'тестобустер','тонгкат али','каберголин','хгч','силденафил'
   ]},
   {id:'joints',label:'🦴 Суставы и восстановление',color:'#93C47D',items:['коллаген','хондроитин']},
-  {id:'gut',label:'🦠 ЖКТ и пробиотики',color:'#A2C4C9',items:['пробиотик','сорбент']},
-  {id:'energy',label:'⚡ Энергия и спорт',color:'#F6B26B',items:['кофеин','креатин','бетаин','энергетик']},
+  {id:'gut',label:'🦠 ЖКТ и пробиотики',color:'#A2C4C9',items:['пробиотик','сорбент','бетаина гидрохлорид']},
+  {id:'energy',label:'⚡ Энергия и спорт',color:'#F6B26B',items:['кофеин','креатин','энергетик']},
   {id:'herbs',label:'🌿 Адаптогены и травы',color:'#B6D7A8',items:['ежовик','куркумин','цистанхе','женьшень']},
   {id:'other',label:'💊 Прочее / лекарства',color:'#CCCCCC',items:[
     'обезболивающее','миорелаксант','антибиотик','ацикловир','зодак','нистатин',
@@ -1188,7 +1196,12 @@ const SUPP_CAT_BY_NAME=(()=>{
   return m;
 })();
 const SUPP_UNKNOWN_CATEGORY=SUPP_CATEGORIES.find(cat=>cat.id==='unknown');
-const suppCategory=n=>SUPP_CAT_BY_NAME.get(canonSupp(n))||SUPP_UNKNOWN_CATEGORY;
+function suppCategory(n){
+  const key=canonSupp(n), known=SUPP_CAT_BY_NAME.get(key);
+  if(known) return known;
+  const rec=(DB.supps||[]).find(s=>canonSupp(s.name)===key);
+  return SUPP_CATEGORIES.find(cat=>cat.id===rec?.category)||SUPP_UNKNOWN_CATEGORY;
+}
 function suppGroupHtml(names,selected,cls){
   const groups=new Map(SUPP_CATEGORIES.map(cat=>[cat.id,{cat,names:[]}]));
   for(const n of names){
@@ -1297,11 +1310,19 @@ function bindDay(){
 }
 function suppSheet(){
   const x=day(cur), all=DB.supps.map(s=>s.name);
+  const catOpts=SUPP_CATEGORIES.filter(c=>c.id!=='unknown')
+    .map(c=>`<option value="${c.id}">${esc(c.label)}</option>`).join('');
   openSheet(`<h2>Добавки</h2>
     <input type="text" id="sq2" placeholder="Поиск или новое название" style="margin-bottom:12px">
     <div class="chips" id="spAll" style="max-height:46vh;overflow:auto">${suppGroupHtml(all,x.supp||[],'sp2')}</div>
-    <div class="row" style="margin-top:14px"><button class="btn" id="newSp">Добавить новую</button>
-      <span class="spacer"></span><button class="btn primary" data-close>Готово</button></div>`);
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft)">
+      <div class="small muted" style="margin-bottom:7px">Для новой добавки выберите категорию</div>
+      <div class="row">
+        <select id="spCat" style="flex:1;min-width:0">${catOpts}</select>
+        <button class="btn" id="newSp">Добавить новую</button>
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px"><span class="spacer"></span><button class="btn primary" data-close>Готово</button></div>`);
   const f=$('#sq2');
   f.oninput=()=>{const q=f.value.toLowerCase();
     $$('.sp2').forEach(b=>b.style.display=b.dataset.n.toLowerCase().includes(q)?'':'none');
@@ -1312,7 +1333,15 @@ function suppSheet(){
     b.classList.toggle('on'); save(); };
   $('#newSp').onclick=()=>{
     const v=canonSupp(f.value.trim()); if(!v)return toast('Введите название');
-    if(!DB.supps.some(s=>s.name===v)) DB.supps.push({id:uid(),name:v,slot:'day'});
+    const known=SUPP_CAT_BY_NAME.get(v), chosen=$('#spCat').value;
+    if(known&&chosen!==known.id){
+      toast('Эта добавка уже относится к категории «'+known.label+'»');
+      return;
+    }
+    const rec=DB.supps.find(s=>s.name===v);
+    if(rec){
+      if(!known) rec.category=chosen;
+    }else DB.supps.push({id:uid(),name:v,slot:'day',...(!known?{category:chosen}:{})});
     x.supp=x.supp||[]; if(!x.supp.includes(v))x.supp.push(v);
     save(); closeSheet(); rDay();
   };
