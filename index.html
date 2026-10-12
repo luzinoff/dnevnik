@@ -380,11 +380,11 @@ const ACT_GROUPS=[
    /* w0: отметка для наблюдения, в балл дня не идёт */
    {k:'hand',   ic:'❓', lb:'Р', w0:true}]},
  {g:'Прочее', items:[
+   {k:'house', ic:'📋', lb:'Бытовуха'},
    {k:'will',  ic:'🔥', lb:'Воля', hint:'сделал через сопротивление'},
    {k:'medit', ic:'🧘', lb:'Медитация'},
    {k:'post',  ic:'📣', lb:'Посты'},
-   {k:'money', ic:'🚀', lb:'Проекты'},
-   {k:'house', ic:'🔁', lb:'Бытовуха'}]}
+   {k:'money', ic:'🚀', lb:'Проекты'}]}
 ];
 const ACTS=[{k:'sport', ic:'🏋️', lb:'Спорт'}, ...ACT_GROUPS.flatMap(g=>g.items)];
 
