@@ -234,6 +234,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .life-month.now{outline:2px solid var(--accent-2);outline-offset:1px}
 /* Годовой календарь смен 2/2. Цветом отмечены рабочие и выходные дни,
    а ручные исключения помечаются отдельной рамкой. */
+.shift-year-control{display:flex;align-items:end;gap:8px;margin-bottom:10px}
+.shift-year-control .fld{flex:1;min-width:0}
+.shift-year-control .btn.nav{width:38px;height:38px;font-size:24px}
 .shift-year{margin-top:12px}
 .shift-year h3{font-size:13px;color:var(--ink-2);margin-bottom:7px}
 .shift-months{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:4px}
@@ -1635,13 +1638,21 @@ function rLife(){
 function shiftCalendarSheet(){
   const y=new Date().getFullYear();
   openSheet(`<h2>График работы 2/2</h2>
-    <label class="fld"><span>Год</span><input type="number" id="shiftYear" min="2000" max="2100" step="1" value="${y}"></label>
+    <div class="shift-year-control">
+      <button class="btn sm nav" id="shiftPrev" title="Предыдущий год" aria-label="Предыдущий год">‹</button>
+      <label class="fld"><span>Год</span><input type="number" id="shiftYear" min="2000" max="2100" step="1" value="${y}"></label>
+      <button class="btn sm nav" id="shiftNext" title="Следующий год" aria-label="Следующий год">›</button>
+    </div>
     <div id="shiftPreview">${shiftCalendarHtml(y)}</div>
     <div class="row" style="margin-top:14px"><span class="spacer"></span><button class="btn primary" data-close>Закрыть</button></div>`);
-  $('#shiftYear').oninput=e=>{
-    const n=clamp(+e.target.value||y,2000,2100);
-    $('#shiftPreview').innerHTML=shiftCalendarHtml(n);
+  const input=$('#shiftYear'), preview=$('#shiftPreview');
+  const draw=n=>{
+    n=clamp(Math.round(+n||y),2000,2100); input.value=n;
+    preview.innerHTML=shiftCalendarHtml(n);
   };
+  input.oninput=e=>draw(e.target.value);
+  $('#shiftPrev').onclick=()=>draw(+input.value-1);
+  $('#shiftNext').onclick=()=>draw(+input.value+1);
 }
 function shiftCalendarHtml(year){
   const months=[];
