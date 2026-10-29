@@ -876,7 +876,8 @@ let st=null,syncing=false,tok=null,tokExp=0,gis=null;
 const fmtTS=t=>t?new Date(+t).toLocaleString('ru',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
 
 function dot(s,t){const e=$('#syncDot');e.className='sync-dot'+(s?' '+s:'');e.title=t||'Синхронизация'}
-function queuePush(){clearTimeout(st);st=setTimeout(()=>push().catch(()=>{}),2500)}
+/* занято другим обменом — пробуем ещё раз позже, правка не должна потеряться */
+function queuePush(){clearTimeout(st);st=setTimeout(()=>push().catch(e=>{if(e.message==='BUSY')queuePush()}),2500)}
 const signedIn=()=>!!tok&&Date.now()<tokExp;
 
 function loadGIS(){
@@ -890,10 +891,20 @@ function loadGIS(){
   });
   return gis;
 }
-/* silent=true — молча продлеваем токен, без всплывающего окна */
+/* authUI — операцию запустил пользователь кнопкой, окно входа можно показать.
+   Фоновые обмены (возврат во вкладку, автоотправка) окно не открывают:
+   без нажатия браузер его всё равно заблокирует («Failed to open popup
+   window»). Токен Google живёт час — после этого фон ждёт входа по кнопке. */
+let authUI=false;
+async function withUI(fn){authUI=true;try{return await fn()}finally{authUI=false}}
+/* silent=true — без всплывающего окна: только уже полученный токен */
 async function auth(silent){
   if(signedIn()) return tok;
   if(!CFG.clientId) throw new Error('не указан Client ID');
+  /* В фоне окно пробуем открыть, только если пользователь только что нажимал
+     на странице (автоотправка через 2,5 с после правки): тогда браузер его
+     пропустит, и Google с prompt:'none' молча продлит вход. Иначе — ждём кнопку. */
+  if(silent && !navigator.userActivation?.isActive) throw new Error('NEED_LOGIN');
   await loadGIS();
   return new Promise((ok,no)=>{
     const c=google.accounts.oauth2.initTokenClient({
@@ -903,7 +914,8 @@ async function auth(silent){
         tok=r.access_token; tokExp=Date.now()+(+r.expires_in||3600)*1000-60000;
         CFG.everSignedIn=true; saveCfg(); ok(tok);
       },
-      error_callback:e=>no(new Error(e.type==='popup_closed'?'окно входа закрыто':(e.message||'ошибка входа')))
+      error_callback:e=>no(new Error(e.type==='popup_closed'?'окно входа закрыто'
+        :e.type==='popup_failed_to_open'?'POPUP_BLOCKED':(e.message||'ошибка входа')))
     });
     c.requestAccessToken({prompt:silent?'none':''});
   });
@@ -912,10 +924,13 @@ function signOut(){
   if(tok&&window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(tok,()=>{});
   tok=null;tokExp=0;CFG.everSignedIn=false;saveCfg();dot('','Не подключено');
 }
-const gapi=async(url,opt={})=>{
-  const t=await auth(true).catch(()=>auth(false));
+/* Раньше здесь было auth(true).catch(()=>auth(false)): два окна подряд.
+   Первое съедало разрешение браузера на всплывающее окно, второе он
+   блокировал. Теперь окно одно и только по кнопке. */
+const gapi=async(url,opt={},retry=true)=>{
+  const t=await auth(!authUI);
   const r=await fetch(url,{...opt,headers:{...(opt.headers||{}),Authorization:'Bearer '+t}});
-  if(r.status===401){tok=null;return gapi(url,opt)}
+  if(r.status===401){tok=null;tokExp=0;if(retry)return gapi(url,opt,false);throw new Error('NEED_LOGIN')}
   if(!r.ok) throw new Error('Google ответил '+r.status+': '+(await r.text()).slice(0,120));
   return r;
 };
@@ -937,7 +952,9 @@ async function cloudTime(id){
 }
 /* force=true — «отправить поверх»: пользователь уже видел предупреждение */
 async function push(force){
-  if(syncing||!CFG.clientId) return;
+  if(!CFG.clientId) return;
+  /* молча выйти нельзя: окно синхронизации сочло бы это успешной отправкой */
+  if(syncing) throw new Error('BUSY');
   syncing=true;dot('busy','Отправка…');
   try{
     const id=await findFile();
@@ -962,7 +979,7 @@ async function push(force){
     if(j.modifiedTime)CFG.cloudSeen=j.modifiedTime;
     CFG.lastSync=Date.now();saveCfg();
     dot('ok','Сохранено '+new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}));
-  }catch(e){if(!/^CONFLICT\|/.test(e.message))dot('err','Ошибка: '+e.message);throw e}
+  }catch(e){if(!/^CONFLICT\|/.test(e.message))dot('err',e.message==='NEED_LOGIN'?'Нужно войти в Google заново':'Ошибка: '+e.message);throw e}
   finally{syncing=false}
 }
 /* Возвращает, что именно произошло: 'got' | 'same' | 'local' | 'empty'.
@@ -993,7 +1010,13 @@ async function pull(silent,force){
     CFG.lastSync=Date.now();saveCfg();
     dot('ok','Синхронизировано');
     return res;
-  }catch(e){dot('err',e.message); if(!silent)toast('Не удалось: '+e.message)}
+  }catch(e){
+    dot('err',e.message==='NEED_LOGIN'?'Нужно войти в Google заново':e.message);
+    /* Ошибку отдаём наверх: раньше pull возвращал undefined, и окно
+       синхронизации показывало «здесь и в облаке одно и то же». */
+    if(!silent) throw e;
+    return 'error';
+  }
   finally{syncing=false}
 }
 
@@ -2178,14 +2201,16 @@ function syncSheet(){
   $('#sIn').onclick=async()=>{grab();
     if(!CFG.clientId) return m().textContent='Сначала вставьте Client ID.';
     m().textContent='Открываю окно входа…';
-    try{ await auth(false); m().textContent='Подключено. Теперь нажмите «Отправить».'; }
+    /* «Переподключить» всегда спрашивает Google заново, даже при живом токене */
+    tok=null; tokExp=0;
+    try{ await withUI(()=>auth(false)); m().textContent='Подключено. Теперь нажмите «Отправить».'; }
     catch(e){ m().textContent=hintAuth(e.message); }};
   /* Исход загрузки объясняем словами. «Здесь копия свежее» — самый
      запутывающий случай: обмен прошёл, ошибок нет, а записей нет,
      потому что подтягивать было нечего. Тогда предлагаем отправить. */
   $('#sPull').onclick=async()=>{grab();m().textContent='Загружаю…';
     try{
-      const r=await pull();
+      const r=await withUI(()=>pull());
       if(r==='got')        m().textContent='Записи с Диска загружены.';
       else if(r==='local') m().innerHTML='Загружать нечего: здесь правили позже ('+
         fmtTS(DB.updated)+'), чем в облаке. Похоже, изменения с другого устройства '+
@@ -2195,10 +2220,11 @@ function syncSheet(){
       else                 m().textContent='Здесь и в облаке одно и то же.';
       const fb=$('#sForce'); if(fb) fb.onclick=async ev=>{ev.preventDefault();
         if(!confirm('Заменить записи на этом устройстве облачными? Здешние правки пропадут.'))return;
-        await pull(false,true); m().textContent='Взята копия из облака.'};
+        try{await withUI(()=>pull(false,true)); m().textContent='Взята копия из облака.'}
+        catch(e2){m().textContent=hintAuth(e2.message)}};
     }catch(e){m().textContent=hintAuth(e.message)}};
   $('#sPush').onclick=async()=>{grab();m().textContent='Отправляю…';
-    try{await push();m().textContent='Отправлено на Диск.'}
+    try{await withUI(()=>push());m().textContent='Отправлено на Диск.'}
     catch(e){
       if(/^CONFLICT\|/.test(e.message)){
         m().innerHTML='В облаке копия свежее здешней — её писало другое устройство. '+
@@ -2206,7 +2232,7 @@ function syncSheet(){
           'Если отправляете именно эту копию осознанно: <a href="#" id="sForceP">отправить поверх</a>.';
         $('#sForceP').onclick=async ev=>{ev.preventDefault();
           if(!confirm('Перезаписать облако этой копией? Записи другого устройства пропадут.'))return;
-          try{await push(true);m().textContent='Отправлено поверх.'}catch(e2){m().textContent=hintAuth(e2.message)}};
+          try{await withUI(()=>push(true));m().textContent='Отправлено поверх.'}catch(e2){m().textContent=hintAuth(e2.message)}};
       } else m().textContent=hintAuth(e.message);
     }};
   const so=$('#sOut'); if(so)so.onclick=()=>{signOut();closeSheet();toast('Отключено')};
@@ -2214,6 +2240,12 @@ function syncSheet(){
 /* переводит ошибки Google на человеческий */
 function hintAuth(msg){
   const s=String(msg);
+  if(s==='NEED_LOGIN')
+    return 'Вход в Google истёк (он действует около часа). Нажмите «Переподключить» и повторите.';
+  if(s==='POPUP_BLOCKED')
+    return 'Браузер не дал открыть окно входа Google. Разрешите всплывающие окна для этого сайта (значок в адресной строке) и нажмите кнопку ещё раз.';
+  if(s==='BUSY')
+    return 'Обмен с Диском уже идёт — подождите несколько секунд и повторите.';
   if(/origin|redirect_uri|400/i.test(s))
     return 'Google не принял адрес страницы. В Credentials → ваш OAuth client → Authorized JavaScript origins должен быть указан '+location.origin+' — ровно так, без пути в конце.';
   if(/access_denied|отклон|denied/i.test(s))
