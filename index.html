@@ -375,6 +375,18 @@ input[type=text],input[type=number],input[type=date],input[type=time],input[type
 .tab.on svg{background:var(--accent-soft)}
 .tab{white-space:nowrap}
 button:focus-visible,.dn-date:focus-within{outline:2px solid var(--accent);outline-offset:1px}
+/* ---- советы ИИ ---- */
+.ai-card>h2 .right{margin-left:auto}
+.ai-card>h2 .btn.ghost{padding:2px 6px;font-size:15px;color:var(--ink-3)}
+.ai-text{font-size:14px;line-height:1.55;overflow-wrap:break-word}
+.ai-text b{font-weight:650}
+.ai-text .ai-li{position:relative;padding-left:15px;margin:3px 0}
+.ai-text .ai-li::before{content:'';position:absolute;left:3px;top:.62em;width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.ai-text .ai-gap{height:8px}
+.ai-wait{animation:pulse 1.2s infinite}
+@media(prefers-reduced-motion:reduce){.ai-wait{animation:none}}
+.ai-pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;background:var(--surface-2);
+  border:1px solid var(--line-soft);border-radius:10px;padding:10px;max-height:52vh;overflow:auto;margin:0;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -690,7 +702,7 @@ const BOOKS_V=1;
 const ACT_W=()=>Object.fromEntries(ACTS.map(a=>[a.k,a.w0?0:1]));
 /* lastSync — момент последнего удачного обмена этого устройства; cloudSeen
    и fileId остались от прежней схемы синхронизации и больше не читаются. */
-const DEF_CFG={theme:'light',clientId:'',fileId:'',cloudSeen:'',everSignedIn:false,lastSync:0,autoSync:true,
+const DEF_CFG={theme:'light',clientId:'',fileId:'',cloudSeen:'',everSignedIn:false,lastSync:0,autoSync:true,aiKey:'',aiModel:'',aiTexts:false,
   weights:ACT_W(), suppOrder:[], hidden:[]};
 
 /* sec — списки разделов целей и заметок, secDel — удалённые вручную ключи */
@@ -1346,6 +1358,7 @@ function rDay(){
     <div class="small muted" style="margin-top:6px">Сохраняется автоматически</div>
   </div>`;
   bindDay();
+  aiMount('d');
 }
 /* Компактный бейдж рядом с датой: значок и короткая подпись.
    Тап переключает, долгое нажатие возвращает день к графику. */
@@ -1996,6 +2009,7 @@ function rStats(){
     <div class="small muted" style="margin-top:9px">Графики добавим отдельно, на основе этих данных.</div>
   </div>`;
   $('#exJ').onclick=()=>dl('dnevnik-'+today()+'.json',JSON.stringify(DB),'application/json');
+  aiMount('p');
   $('#exC').onclick=exportCSV;
   $('#imJ').onclick=importJSON;
   $('#imB').onclick=importBand;
@@ -2822,6 +2836,265 @@ try{
     });
   }
 }catch(e){/* старый браузер — обойдётся SVG-иконкой */}
+
+/* ================= СОВЕТЫ ИИ (Gemini) =================
+   Разбор дня, недели или месяца по данным дневника. Запрос уходит прямо
+   из браузера в Gemini API (generateContent), сервер не нужен.
+
+   Ключ Gemini живёт только в CFG (localStorage этого браузера): в DB его
+   нет, поэтому он не попадает ни в облако, ни в выгрузки, ни в index.html.
+   Ответы — в DB.advice и синхронизируются, как всё остальное:
+   ключи 'd:YYYY-MM-DD', 'w:<понедельник>', 'm:YYYY-MM'.
+
+   Что отправляется: только перечисленные ниже поля. Список разрешённый,
+   а не запрещающий, — новое поле в записи само наружу не уйдёт. «Свидание»,
+   «Секс», «Р», алкоголь и вещества не отправляются никогда. Тексты записей
+   дня — только с галочкой CFG.aiTexts. Цели и заметки — позже, в aiExtras(). */
+const AI_DEF_MODEL='gemini-3.6-flash';
+const AI_ACTS=ACTS.filter(a=>!['dating','sexn','hand'].includes(a.k)&&a.k!=='sport');
+const aiBusy={};
+let aiPer={kind:'w',anchor:today()};
+
+const monday=d=>{const x=pISO(d);const k=(x.getDay()+6)%7;return addD(d,-k)};
+const ym=d=>d.slice(0,7);
+function aiRange(kind,anchor){
+  if(kind==='d') return [anchor,anchor];
+  if(kind==='w'){const a=monday(anchor);return [a,addD(a,6)]}
+  const a=ym(anchor)+'-01', n=pISO(a); n.setMonth(n.getMonth()+1); n.setDate(0);
+  return [a,iso(n)];
+}
+const aiKey=(kind,anchor)=>kind==='d'?'d:'+anchor:kind==='w'?'w:'+monday(anchor):'m:'+ym(anchor);
+function aiDays(a,b){const out=[];for(let d=a;d<=b;d=addD(d,1))out.push(d);return out}
+function aiPeriodLabel(kind,anchor){
+  const [a,b]=aiRange(kind,anchor);
+  if(kind==='d') return fmtFull(a);
+  if(kind==='w') return `${fmtD(a)} — ${fmtD(b)}`;
+  const d=pISO(a); return ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][d.getMonth()]+' '+d.getFullYear();
+}
+
+/* одна строка данных за день — только разрешённые поля */
+function aiDayLine(d,withText){
+  const x=DB.days[d], p=[`${fmtFull(d)}`];
+  if(!x||!Object.keys(x).length) return p[0]+': записи нет';
+  p.push(isWork(d)?'рабочий':'выходной');
+  p.push('балл '+score(d));
+  const sl=[];
+  if(x.bed||x.rise||x.wake) sl.push(`лёг ${x.bed||'?'}, встал ${x.rise||x.wake||'?'}`);
+  if(x.sleepH!=null) sl.push(fmtH(x.sleepH));
+  if(x.slept) sl.push(`оценка ${x.slept}/5`);
+  if(x.sleepScore) sl.push(`браслет ${x.sleepScore}/100`);
+  if(x.deepMin!=null) sl.push(`глубокий ${x.deepMin} мин`);
+  if(x.remMin!=null) sl.push(`быстрый ${x.remMin} мин`);
+  if(sl.length) p.push('сон: '+sl.join(', '));
+  if(x.pulse) p.push('пульс мин '+x.pulse);
+  if(x.restHr) p.push('пульс покоя '+x.restHr);
+  if(x.weight) p.push('вес '+x.weight);
+  if(x.steps) p.push('шаги '+x.steps);
+  if(x.sport){
+    const ex=Object.entries(x.ex||{}).filter(([,v])=>String(v).trim()).map(([k,v])=>`${k} — ${v}`);
+    p.push('тренировка'+(ex.length?': '+ex.join('; '):''));
+  }
+  const acts=AI_ACTS.filter(a=>+x[a.k]).map(a=>a.lb+(+x[a.k]>1?' ×'+x[a.k]:''));
+  if(acts.length) p.push('активности: '+acts.join(', '));
+  if((x.supp||[]).length) p.push('добавки: '+x.supp.join(', '));
+  if(withText&&String(x.note||'').trim()) p.push('запись: «'+String(x.note).trim().replace(/\s+/g,' ')+'»');
+  return p.join('; ');
+}
+/* средние за набор дней — для сравнения с прошлым периодом */
+function aiStats(days){
+  const v=f=>days.map(d=>DB.days[d]).filter(Boolean).map(f).filter(x=>x!=null&&x!==''&&!Number.isNaN(x)&&x!==0);
+  const a=f=>{const l=v(f);return l.length?r1(avg(l.map(Number))):'—'};
+  const has=days.filter(d=>DB.days[d]&&Object.keys(DB.days[d]).length);
+  return [
+    `дней с записями ${has.length} из ${days.length}`,
+    `средний балл ${has.length?r1(avg(has.map(score))):'—'}`,
+    `сон ${a(x=>x.sleepH)} ч`, `оценка сна ${a(x=>x.slept)}/5`, `браслет ${a(x=>x.sleepScore)}`,
+    `глубокий ${a(x=>x.deepMin)} мин`, `пульс мин ${a(x=>x.pulse)}`, `пульс покоя ${a(x=>x.restHr)}`,
+    `вес ${a(x=>x.weight)}`, `шаги ${a(x=>x.steps)}`,
+    `тренировок ${has.filter(d=>DB.days[d].sport).length}`,
+    ...AI_ACTS.map(k=>{const n=has.filter(d=>+DB.days[d][k.k]).length;return n?`${k.lb}: ${n} дн`:''}).filter(Boolean)
+  ].join('; ');
+}
+/* место для целей и заметок — подключим позже */
+function aiExtras(kind){ return '' }
+
+function aiPrompt(kind,anchor){
+  const [a,b]=aiRange(kind,anchor), withText=!!CFG.aiTexts;
+  const L=[];
+  if(kind==='d'){
+    L.push(`Разбери день ${fmtFull(a)}.`,'','Этот день:',aiDayLine(a,withText),'','Предыдущие 7 дней для фона:');
+    aiDays(addD(a,-7),addD(a,-1)).forEach(d=>L.push('- '+aiDayLine(d,false)));
+    L.push('','Средние за эти 7 дней: '+aiStats(aiDays(addD(a,-7),addD(a,-1))));
+  } else {
+    const days=aiDays(a,b>today()?today():b);
+    const len=aiDays(a,b).length;
+    const pa=kind==='w'?addD(a,-7):(()=>{const d=pISO(a);d.setMonth(d.getMonth()-1);return iso(d)})();
+    const pb=addD(a,-1);
+    L.push(`Разбери ${kind==='w'?'неделю':'месяц'}: ${aiPeriodLabel(kind,anchor)}${b>today()?' (период ещё идёт, данные по сегодняшний день)':''}.`,'','По дням:');
+    days.forEach(d=>L.push('- '+aiDayLine(d,withText)));
+    L.push('','Итоги периода: '+aiStats(days));
+    L.push(`Для сравнения — предыдущ${kind==='w'?'ая неделя':'ий месяц'}: `+aiStats(aiDays(pa,pb)));
+    if(len!==days.length) L.push(`(в периоде ${len} дней, прошло ${days.length})`);
+  }
+  const ex=aiExtras(kind); if(ex) L.push('',ex);
+  return L.join('\n');
+}
+const AI_SYSTEM=`Ты — внимательный личный коуч по самочувствию, режиму и привычкам. Тебе присылают выдержку из личного дневника одного человека: сон (время, длительность, ручная оценка 1–5, оценка браслета, фазы), пульс, вес, шаги, тренировки, отметки активностей, добавки и лекарства, иногда записи дня. «Балл дня» — сумма отметок активностей и тренировки, чем больше, тем насыщеннее день. «Рабочий/выходной» — смены по графику 2/2.
+Отвечай по-русски, тепло, но по делу и коротко — так, чтобы прочитать за минуту. Опирайся только на присланные данные, ничего не выдумывай и не пересказывай таблицу. Ищи связи (сон и пульс, нагрузка и самочувствие, рабочие и выходные дни, привычки и балл), только если они действительно видны.
+Формат:
+**Коротко** — 1–2 предложения.
+**Что получилось** — 2–3 пункта.
+**На что обратить внимание** — 1–3 пункта.
+**Советы на {когда}** — 2–4 конкретных, выполнимых шага.
+Пункты начинай с «- ». Без диагнозов и без советов по дозировкам лекарств и добавок; если что-то выглядит тревожно для здоровья — мягко предложи обсудить это с врачом.`;
+
+async function aiAsk(kind,anchor){
+  if(!CFG.aiKey) throw new Error('NO_KEY');
+  const model=(CFG.aiModel||AI_DEF_MODEL).trim();
+  const when=kind==='d'?'завтра':kind==='w'?'следующую неделю':'следующий месяц';
+  const body={
+    systemInstruction:{parts:[{text:AI_SYSTEM.replace('{когда}',when)}]},
+    contents:[{role:'user',parts:[{text:aiPrompt(kind,anchor)}]}],
+    generationConfig:{temperature:0.7,maxOutputTokens:4096}
+  };
+  const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),90000);
+  let r;
+  try{
+    r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',
+      {method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':CFG.aiKey},body:JSON.stringify(body),signal:ctl.signal});
+  }catch(e){throw new Error(e.name==='AbortError'?'TIMEOUT':'NETWORK')}
+  finally{clearTimeout(t)}
+  let j=null; try{j=await r.json()}catch(e){}
+  if(!r.ok){
+    const m=(j&&j.error&&j.error.message)||('HTTP '+r.status);
+    const e=new Error(m); e.status=r.status; throw e;
+  }
+  const c=j&&j.candidates&&j.candidates[0];
+  const text=((c&&c.content&&c.content.parts)||[]).filter(p=>!p.thought).map(p=>p.text||'').join('').trim();
+  if(!text) throw new Error(c&&c.finishReason?'EMPTY:'+c.finishReason:'EMPTY');
+  return {text,model};
+}
+function aiErr(e){
+  const m=String(e&&e.message||e), s=e&&e.status;
+  if(m==='NO_KEY') return 'Сначала вставьте ключ Gemini в настройках (⚙).';
+  if(m==='TIMEOUT') return 'Gemini не ответил за полторы минуты. Попробуйте ещё раз.';
+  if(m==='NETWORK') return 'Нет связи с Gemini — проверьте интернет.';
+  if(/location is not supported/i.test(m)) return 'Gemini API недоступен из вашей страны (так ответил Google).';
+  if(/API key not valid|API_KEY_INVALID/i.test(m)||s===401) return 'Ключ Gemini не подошёл. Проверьте его в настройках (⚙).';
+  if(s===429||/quota|RESOURCE_EXHAUSTED/i.test(m)) return 'Исчерпан лимит запросов Gemini. Подождите немного или проверьте тариф в Google AI Studio.';
+  if(s===404||/not found/i.test(m)) return 'Модель «'+(CFG.aiModel||AI_DEF_MODEL)+'» не найдена. Проверьте название в настройках (⚙).';
+  if(/^EMPTY/.test(m)) return 'Gemini вернул пустой ответ'+(m.includes(':')?' ('+m.split(':')[1]+')':'')+'. Попробуйте ещё раз.';
+  return 'Ошибка Gemini: '+m;
+}
+/* простая разметка ответа: **жирный** и пункты «- » — без чужого HTML */
+function aiHtml(t){
+  return esc(t).split('\n').map(l=>{
+    l=l.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/^#{1,4}\s*(.+)$/,'<b>$1</b>');
+    const m=/^\s*[-*•]\s+(.*)$/.exec(l);
+    return m?`<div class="ai-li">${m[1]}</div>`:(l.trim()?`<div>${l}</div>`:'<div class="ai-gap"></div>');
+  }).join('');
+}
+
+function aiBody(kind,anchor){
+  const key=aiKey(kind,anchor), a=(DB.advice||{})[key], busy=aiBusy[key];
+  const what=kind==='d'?'этот день на фоне прошлой недели':kind==='w'?'неделю по дням и сравнит с прошлой':'месяц по дням и сравнит с прошлым';
+  const fields='сон, пульс, вес, шаги, тренировки, активности, добавки'+(CFG.aiTexts?', тексты записей':'');
+  return `
+    ${busy?`<div class="small muted ai-wait">Gemini думает…</div>`
+      : a?`<div class="ai-text">${aiHtml(a.text)}</div>
+        <div class="small muted" style="margin-top:8px">${esc(fmtTS(a.at))} · ${esc(a.model||'')}${a.texts?' · с текстами записей':''}</div>`
+      : `<div class="small muted">Gemini разберёт ${what}: ${fields}.</div>`}
+    <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px">
+      ${CFG.aiKey
+        ?`<button class="btn sm primary ai-go" ${busy?'disabled':''}>${a?'Обновить совет':'Получить совет'}</button>`
+        :`<button class="btn sm primary ai-set">Подключить Gemini</button>`}
+      <button class="btn sm ghost ai-prev">Что отправится</button>
+      ${a&&!busy?'<button class="btn sm ghost ai-del">Удалить</button>':''}
+    </div>`;
+}
+/* Карточка в DOM; kind 'd' — на «Дне», 'p' — разбор периода в «Статистике» */
+function aiMount(where){
+  if(where==='d'){
+    const host=$('#v-day'); if(!host) return;
+    host.insertAdjacentHTML('beforeend',`<div class="card ai-card" id="aiCard-d">
+      <h2>🤖 Совет на день <button class="btn ghost sm right ai-set" title="Настройки Gemini" aria-label="Настройки Gemini">⚙</button></h2>
+      <div class="ai-in">${aiBody('d',cur)}</div></div>`);
+    aiBind('d',cur,'aiCard-d');
+  } else {
+    const first=$('#v-stats .card'); if(!first) return;
+    const {kind,anchor}=aiPer;
+    const [,b]=aiRange(kind,anchor);
+    first.insertAdjacentHTML('afterend',`<div class="card ai-card" id="aiCard-p">
+      <h2>🤖 Разбор периода <button class="btn ghost sm right ai-set" title="Настройки Gemini" aria-label="Настройки Gemini">⚙</button></h2>
+      <div class="seg" id="aiKind" style="margin-bottom:10px">
+        <button data-v="w" class="${kind==='w'?'on':''}">Неделя</button><button data-v="m" class="${kind==='m'?'on':''}">Месяц</button></div>
+      <div class="row" style="margin-bottom:10px">
+        <button class="dn-btn" id="aiPv" aria-label="Предыдущий период"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <div style="flex:1;text-align:center;font-weight:600">${esc(aiPeriodLabel(kind,anchor))}</div>
+        <button class="dn-btn" id="aiNx" aria-label="Следующий период" ${b>=today()?'disabled':''}><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+      </div>
+      <div class="ai-in">${aiBody(kind,anchor)}</div></div>`);
+    $('#aiKind').onclick=e=>{const v=e.target.closest('[data-v]');if(!v)return;aiPer={kind:v.dataset.v,anchor:aiPer.anchor};rStats()};
+    const step=dir=>{
+      if(aiPer.kind==='w') aiPer.anchor=addD(monday(aiPer.anchor),7*dir);
+      else{const d=pISO(ym(aiPer.anchor)+'-01');d.setMonth(d.getMonth()+dir);aiPer.anchor=iso(d)}
+      if(aiPer.anchor>today()) aiPer.anchor=today();
+      rStats();
+    };
+    $('#aiPv').onclick=()=>step(-1); $('#aiNx').onclick=()=>step(1);
+    aiBind(kind,anchor,'aiCard-p');
+  }
+}
+function aiRefresh(){ if(tab==='day') rDay(); else if(tab==='stats') rStats(); }
+/* у карточки на «Дне» и в «Статистике» разные id: обе живут в DOM
+   одновременно (скрытая вкладка не удаляется), и общий id цеплял
+   кнопки одной к данным другой */
+function aiBind(kind,anchor,id){
+  const card=$('#'+id); if(!card) return;
+  card.querySelectorAll('.ai-set').forEach(b=>b.onclick=aiSettings);
+  const pv=card.querySelector('.ai-prev'); if(pv) pv.onclick=()=>aiPreview(kind,anchor);
+  const del=card.querySelector('.ai-del'); if(del) del.onclick=()=>{
+    if(!confirm('Удалить этот совет?')) return;
+    delete DB.advice[aiKey(kind,anchor)]; save(); aiRefresh();
+  };
+  const go=card.querySelector('.ai-go'); if(go) go.onclick=async()=>{
+    const key=aiKey(kind,anchor);
+    if(aiBusy[key]) return;
+    aiBusy[key]=true; aiRefresh();
+    try{
+      const r=await aiAsk(kind,anchor);
+      DB.advice=DB.advice||{};
+      DB.advice[key]={text:r.text,at:Date.now(),model:r.model,texts:!!CFG.aiTexts};
+      save();
+    }catch(e){ toast(aiErr(e)); setTimeout(()=>{const c=$('#'+id+' .ai-in');if(c&&!aiBusy[key])c.insertAdjacentHTML('afterbegin',`<div class="small" style="color:var(--warn);margin-bottom:8px">${esc(aiErr(e))}</div>`)},0) }
+    finally{ delete aiBusy[key]; aiRefresh(); }
+  };
+}
+function aiPreview(kind,anchor){
+  openSheet(`<h2>Что отправится в Gemini</h2>
+    <div class="small muted" style="margin-bottom:8px">Ровно этот текст, плюс инструкция для ответа. «Свидание», «Секс», «Р», алкоголь, вещества, заметки и раздел «Ж» не отправляются${CFG.aiTexts?'':', тексты записей — тоже (включаются в ⚙)'}.</div>
+    <pre class="ai-pre">${esc(aiPrompt(kind,anchor))}</pre>
+    <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn primary" data-close>Понятно</button></div>`);
+}
+function aiSettings(){
+  openSheet(`<h2>Советы Gemini</h2>
+    <label class="fld" style="margin-bottom:10px"><span>Ключ Gemini API</span>
+      <input type="password" id="aiK" value="${esc(CFG.aiKey||'')}" autocomplete="off" spellcheck="false" placeholder="вставьте ключ из Google AI Studio"></label>
+    <label class="fld" style="margin-bottom:10px"><span>Модель</span>
+      <input type="text" id="aiM" value="${esc(CFG.aiModel||AI_DEF_MODEL)}" spellcheck="false"></label>
+    <label class="row small" style="margin-bottom:6px;align-items:flex-start"><input type="checkbox" id="aiT" ${CFG.aiTexts?'checked':''} style="width:auto;margin-top:3px">
+      <span>Отправлять тексты записей дня</span></label>
+    <div class="small muted" style="line-height:1.6;margin-bottom:12px">
+      Ключ хранится только в этом браузере: в облако, выгрузки и опубликованный файл он не попадает. На каждом устройстве его вводят отдельно.<br>
+      На бесплатном тарифе Google может использовать запросы для улучшения своих продуктов, и их могут читать люди. На платном — нет. Тексты записей лучше включать только на платном.</div>
+    <div class="row"><button class="btn ghost" id="aiKDel" ${CFG.aiKey?'':'disabled'}>Удалить ключ</button>
+      <span class="spacer"></span><button class="btn" data-close>Отмена</button><button class="btn primary" id="aiOk">Сохранить</button></div>`);
+  $('#aiOk').onclick=()=>{
+    CFG.aiKey=$('#aiK').value.trim(); CFG.aiModel=$('#aiM').value.trim()||AI_DEF_MODEL; CFG.aiTexts=$('#aiT').checked;
+    saveCfg(); closeSheet(); aiRefresh(); toast('Настройки Gemini сохранены');
+  };
+  $('#aiKDel').onclick=()=>{CFG.aiKey='';saveCfg();closeSheet();aiRefresh();toast('Ключ удалён')};
+}
 
 /* ================= СТАРТ ================= */
 load(); applyTheme(); render();
