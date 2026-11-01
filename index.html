@@ -311,11 +311,74 @@ code{background:var(--surface-2);border:1px solid var(--line-soft);border-radius
 .act.on{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
 .act.on .lb{color:var(--ink)}
 .act.on .n{opacity:1}
+
+/* ===== Обновление интерфейса 01.11.2026 =====
+   Палитра и шрифт прежние; плотнее отступы, заголовки карточек без капса,
+   навигация по дням — в закреплённой шапке, активности — компактные таблетки. */
+.view{padding:12px 0 22px}
+.card{border-radius:16px;padding:14px;margin-bottom:10px;border-color:var(--line-soft)}
+.card>h2{font-size:15px;text-transform:none;letter-spacing:-.01em;color:var(--ink);font-weight:650;margin-bottom:11px}
+.card>h2 .right{font-size:12px}
+input[type=text],input[type=number],input[type=date],input[type=time],input[type=url],select{padding:8px 11px}
+/* шапка: на вкладке «День» вместо заголовка — переход по дням */
+.day-nav{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.day-nav[hidden],#ttlWrap[hidden],#themeBtn[hidden]{display:none}
+.dn-btn{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--surface);
+  display:grid;place-items:center;padding:0;flex:none;color:var(--ink-2)}
+.dn-btn svg{width:17px;height:17px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.dn-btn:disabled{opacity:.3;cursor:default}
+/* стрелки держатся у даты, остальное — у правого края */
+.day-nav #nx{margin-right:auto}
+.dn-date{flex:0 1 auto;min-width:96px;padding-left:8px!important;padding-right:8px!important;position:relative;text-align:center;border-radius:10px;padding:1px 4px;cursor:pointer}
+.dn-date:hover{background:var(--surface-2)}
+.dn-main{display:block;font-size:16px;font-weight:650;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.01em}
+.dn-sub{display:block;font-size:11.5px;color:var(--ink-3);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dn-date input{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;cursor:pointer}
+.dn-today{height:34px;padding:0 10px;border-radius:10px;border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);
+  background:var(--accent-soft);color:var(--accent);font-size:12.5px;font-weight:600;flex:none}
+.dn-score{min-width:34px;height:34px;padding:0 7px;border-radius:10px;background:var(--accent);color:var(--surface);
+  display:grid;place-items:center;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;flex:none}
+.top-in .wbadge{height:34px}
+/* добавки дня — одной строкой, цвет категории на самой таблетке */
+.supp-flat .chip{background:color-mix(in srgb,var(--supp-color) 27%,var(--surface-2));border-color:var(--supp-color);color:var(--ink);font-size:13px;padding:5px 11px}
+/* активности — таблетки «значок + название», счётчик справа */
+.agroup+.agroup{margin-top:10px}
+.ghd{font-size:11.5px;margin-bottom:5px}
+.acts{display:flex;flex-wrap:wrap;gap:6px}
+.act{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 12px 6px 9px;text-align:left;min-height:36px}
+.act .ic{font-size:16px;line-height:1}
+.act .lb{font-size:13px;margin:0;line-height:1.2}
+.act .n{position:static;opacity:1;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);
+  color:var(--surface);font-size:11px;line-height:18px;text-align:center;margin-left:1px;order:3}
+.act .n:empty{display:none}
+/* Группы активностей идут одним потоком: заголовок над каждой группой
+   и перенос внутри неё давали строки с одной таблеткой. Порядок групп
+   сохранён, а значки и так говорят, о чём таблетка. */
+#acts{display:flex;flex-wrap:wrap;gap:6px 6px}
+#acts .agroup,#acts .agroup>.acts{display:contents}
+/* спорт: поля упражнений ещё плотнее */
+#spt + .grid2 .fld>span{font-size:11.5px}
+#spt + .grid2 input{padding-top:6px;padding-bottom:6px}
+/* записи дневника — вся карточка открывает день */
+.item.gd{cursor:pointer;background:var(--surface);border-color:var(--line-soft);transition:border-color .15s}
+.item.gd:hover{border-color:var(--ink-3)}
+.item.gd:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.item .meta{display:flex;align-items:center;gap:8px}
+.item .meta b{color:var(--ink-2);font-weight:600}
+.item .sc{margin-left:auto;min-width:24px;height:22px;padding:0 6px;border-radius:7px;background:var(--accent-soft);
+  color:var(--accent);font-weight:700;font-size:12px;display:grid;place-items:center}
+/* нижние вкладки: активная — с подложкой под значком */
+.tab{padding:6px 2px 8px;gap:2px}
+.tab svg{box-sizing:content-box;padding:4px 14px;border-radius:999px;transition:background .15s}
+.tab.on svg{background:var(--accent-soft)}
+.tab{white-space:nowrap}
+button:focus-visible,.dn-date:focus-within{outline:2px solid var(--accent);outline-offset:1px}
 </style>
 </head>
 <body>
 <header class="top"><div class="top-in">
-  <div style="flex:1;min-width:0"><h1 id="ttl">День</h1><div class="sub" id="sub"></div></div>
+  <div class="day-nav" id="dayNav" hidden></div>
+  <div style="flex:1;min-width:0" id="ttlWrap"><h1 id="ttl">День</h1><div class="sub" id="sub"></div></div>
   <span class="sync-dot" id="syncDot" title="Синхронизация"></span>
   <button class="icon-btn" id="themeBtn" title="Тема">◐</button>
 </div></header>
@@ -1179,8 +1242,11 @@ function go(id){
   $$('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+id));window.scrollTo({top:0});render()}
 function render(){
   const T=TABS.find(t=>t.id===tab);
-  $('#ttl').textContent = tab==='day'?(cur===today()?'Сегодня':fmtD(cur)):T.name;
-  $('#sub').textContent = tab==='day'?fmtFull(cur):'';
+  /* На «Дне» вместо заголовка — переход по дням (его рисует rDay) */
+  const isDay=tab==='day';
+  $('#ttl').textContent=T.name; $('#sub').textContent='';
+  $('#ttlWrap').hidden=isDay; $('#dayNav').hidden=!isDay; $('#themeBtn').hidden=isDay;
+  if(!isDay) $('#dayNav').innerHTML='';
   ({day:rDay,diary:rDiary,goals:rGoals,stats:rStats,life:rLife,notes:rNotes})[tab]();
 }
 
@@ -1192,20 +1258,25 @@ const EXS=[['Растяжка',''],['Кардио',''],['Подтягивани�
 function rDay(){
   const x=day(cur), isT=cur===today(), sc=score(cur);
   const prev=prevDayWith('supp');
+  /* Переход по дням живёт в закреплённой шапке: виден при любой прокрутке.
+     Дата — подпись над невидимым полем выбора даты: тап открывает календарь. */
+  const yest=cur===addD(today(),-1);
+  /* Подпись под датой не повторяет её: у «Сегодня» и «Вчера» — число,
+     у остальных — день недели (и год, если он не текущий). */
+  const wd=new Date(cur+'T12:00').toLocaleDateString('ru',{weekday:'long'});
+  const full=isT||yest ? fmtFull(cur).replace(' '+today().slice(0,4),'')
+    : wd+(cur.slice(0,4)!==today().slice(0,4)?', '+cur.slice(0,4):'');
+  $('#dayNav').innerHTML=`
+    <button class="dn-btn" id="pv" title="Предыдущий день" aria-label="Предыдущий день"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <label class="dn-date" title="Выбрать дату">
+      <span class="dn-main">${isT?'Сегодня':yest?'Вчера':fmtD(cur)}</span>
+      <span class="dn-sub">${esc(full)}</span>
+      <input type="date" id="dp" value="${cur}" max="${today()}" aria-label="Дата"></label>
+    <button class="dn-btn" id="nx" title="Следующий день" aria-label="Следующий день" ${isT?'disabled':''}><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+    ${isT?'':'<button class="dn-today" id="tdy" title="Вернуться к сегодняшнему дню">Сегодня</button>'}
+    ${workBadge(cur)}
+    <div class="dn-score" id="scv" title="Балл дня">${sc}</div>`;
   $('#v-day').innerHTML=`
-  <div class="card">
-    <div class="row">
-      <button class="btn sm nav" id="pv" title="Предыдущий день">←</button>
-      <input type="date" id="dp" value="${cur}" max="${today()}" style="flex:1;min-width:0;text-align:center">
-      <button class="btn sm nav" id="nx" title="Следующий день" ${isT?'disabled':''}>→</button>
-      ${isT?'':'<button class="btn sm nav" id="tdy" title="Вернуться к сегодняшнему дню" aria-label="Сегодня">⌖</button>'}
-      ${workBadge(cur)}
-      <div style="margin-left:2px;text-align:right">
-        <div class="score-big" id="scv">${sc}</div>
-        <div class="small muted" style="line-height:1">балл</div>
-      </div>
-    </div>
-  </div>
 
   <div class="card">
     <h2>😴 Тело и сон <span class="right" id="sleepTot">${x.sleepH!=null?fmtH(x.sleepH):''}</span></h2>
@@ -1237,7 +1308,7 @@ function rDay(){
   <div class="card">
     <h2>💊 Добавки <span class="right">${(x.supp||[]).length} шт</span></h2>
     ${(DB.suppUnknown||[]).length?`<button class="btn sm ghost" id="spUnk" style="margin-bottom:9px">⚠ Нераспознанных названий: ${DB.suppUnknown.length}</button>`:''}
-    <div class="chips" id="spc">${suppChips(x.supp||[])}</div>
+    <div class="chips supp-flat" id="spc">${suppChips(x.supp||[])}</div>
     <div class="row" style="margin-top:11px">
       ${prev?`<button class="btn sm" id="rep">Как ${fmtD(prev)}</button>`:''}
       <button class="btn sm" id="spAdd">+ Другая</button>
@@ -1257,9 +1328,8 @@ function rDay(){
 
   <div class="card">
     <h2>📊 Активности дня <span class="right">тап +1, удержание −1</span></h2>
-    <div id="acts">${ACT_GROUPS.map(g=>`
-      <div class="agroup">
-        <div class="ghd">${g.g}</div>
+    <div id="acts" class="acts">${ACT_GROUPS.map(g=>`
+      <div class="agroup" title="${esc(g.g)}">
         <div class="acts">${g.items.map(a=>{
           const v=+x[a.k]||0;
           return `<button class="act ${v?'on':''}" data-k="${a.k}"${a.hint?` title="${esc(a.hint)}"`:''}><span class="n">${v||''}</span>
@@ -1351,8 +1421,11 @@ function suppGroupHtml(names,selected,cls){
       <div class="chips">${items.map(n=>`<button class="chip ${cls} ${selected.includes(n)?'on':''}" data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>
     </div>`).join('');
 }
+/* На главном экране — одна строка таблеток без заголовков категорий:
+   выбранных обычно три-пять, и заголовок над каждой съедал высоту.
+   Категорию по-прежнему видно по цвету таблетки. */
 function suppChips(list){
-  return suppGroupHtml([...new Set(list)],list,'sp');
+  return [...new Set(list)].map(n=>`<button class="chip sp on" data-n="${esc(n)}" style="--supp-color:${suppCategory(n).color}" title="${esc(suppCategory(n).label)}">${esc(n)}</button>`).join('');
 }
 function prevDayWith(f){
   let d=addD(cur,-1);
@@ -1365,6 +1438,8 @@ function bindDay(){
   const n=$('#nx'); if(n)n.onclick=()=>{if(cur<today()){cur=addD(cur,1);render()}};
   const t=$('#tdy'); if(t)t.onclick=()=>{cur=today();render()};
   $('#dp').onchange=e=>{if(e.target.value){cur=e.target.value;render()}};
+  /* на компьютере щелчок по полю даты календарь сам не открывает */
+  $('#dp').onclick=e=>{try{e.target.showPicker()}catch(_){}};
   /* Тап переключает рабочий/выходной; если совпало с графиком, ручную пометку
      убираем — день снова следует за сменами. Удержание сбрасывает к графику. */
   const wb=$('#wkBtn'); let wHeld=false, wT=null;
@@ -1501,16 +1576,20 @@ function rDiary(){
       `<button class="chip dtg ${dq===t?'on':''}" data-t="${esc(t)}">${esc(t)} ${n}</button>`).join('')}</div>`:''}
   </div>
   ${list.length?list.slice(0,150).map(d=>`
-    <div class="item"><div class="meta">${fmtFull(d)} · балл ${score(d)}</div>
+    <div class="item gd" data-d="${d}" role="button" tabindex="0" title="Открыть день">
+      <div class="meta"><b>${fmtFull(d)}</b><span class="sc" title="Балл дня">${score(d)}</span></div>
       <div style="margin-top:5px;white-space:pre-wrap">${hl(DB.days[d].note)}</div>
-      <div style="margin-top:8px"><button class="btn sm gd" data-d="${d}">Открыть день</button></div>
     </div>`).join(''):'<div class="empty">Ничего не найдено</div>'}
   ${list.length>150?`<div class="empty">Показаны первые 150 из ${list.length}</div>`:''}`;
   const s=$('#dsq');
   s.oninput=()=>{clearTimeout(s._t);s._t=setTimeout(()=>{dq=s.value;rDiary();
     const f=$('#dsq');f.focus();f.setSelectionRange(f.value.length,f.value.length)},350)};
   $$('.dtg').forEach(b=>b.onclick=()=>{dq=dq===b.dataset.t?'':b.dataset.t;rDiary()});
-  $$('.gd').forEach(b=>b.onclick=()=>{cur=b.dataset.d;go('day')});
+  $$('.gd').forEach(b=>{
+    /* вся карточка — ссылка на день; выделение текста мышью день не открывает */
+    b.onclick=()=>{if(String(getSelection())) return; cur=b.dataset.d;go('day')};
+    b.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();cur=b.dataset.d;go('day')}};
+  });
 }
 const hl=t=>esc(t).replace(/#([\wа-яёА-ЯЁ-]+)/g,'<span class="tag">#$1</span>');
 
@@ -2004,6 +2083,9 @@ function makePublic(){
     const tb=doc.querySelector('#tabbar'); if(tb) tb.innerHTML='';
     const tt=doc.querySelector('#ttl'); if(tt) tt.textContent='День';
     const sb=doc.querySelector('#sub'); if(sb) sb.textContent='';
+    const dn=doc.querySelector('#dayNav'); if(dn){dn.innerHTML='';dn.hidden=true}
+    const tw=doc.querySelector('#ttlWrap'); if(tw) tw.hidden=false;
+    const th=doc.querySelector('#themeBtn'); if(th) th.hidden=false;
     const ts=doc.querySelector('#toast'); if(ts){ts.textContent='';ts.classList.remove('on')}
     const sd=doc.querySelector('#syncDot'); if(sd){sd.className='sync-dot';sd.title='Синхронизация'}
     /* PNG-иконки нарисованы канвасом при загрузке — в копии они лишний вес,
