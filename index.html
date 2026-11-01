@@ -384,6 +384,8 @@ button:focus-visible,.dn-date:focus-within{outline:2px solid var(--accent);outli
 .ai-text .ai-li::before{content:'';position:absolute;left:3px;top:.62em;width:5px;height:5px;border-radius:50%;background:var(--accent)}
 .ai-text .ai-gap{height:8px}
 .ai-wait{animation:pulse 1.2s infinite}
+.ai-err{color:var(--warn);margin-bottom:8px;line-height:1.5}
+.ls-ai{margin-top:12px;padding-top:12px;border-top:1px solid var(--line-soft)}
 @media(prefers-reduced-motion:reduce){.ai-wait{animation:none}}
 .ai-pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;background:var(--surface-2);
   border:1px solid var(--line-soft);border-radius:10px;padding:10px;max-height:52vh;overflow:auto;margin:0;overflow-wrap:anywhere}
@@ -1875,12 +1877,6 @@ function lifeSummaryText(key){
   DB.lifeSummaries=DB.lifeSummaries||{};
   return DB.lifeSummaries[key]??LIFE_SUMMARIES[key]??'';
 }
-function lifeSummarySheet(key,label){
-  const text=lifeSummaryText(key);
-  openSheet(`<h2>Итоги: ${label}</h2>
-    <div class="life-summary">${esc(text||'Итог за этот месяц пока не добавлен.')}</div>
-    <div class="row" style="margin-top:14px"><span class="spacer"></span><button class="btn primary" data-close>Закрыть</button></div>`);
-}
 function editLifeSummary(key,label){
   DB.lifeSummaries=DB.lifeSummaries||{};
   const old=lifeSummaryText(key);
@@ -1888,36 +1884,25 @@ function editLifeSummary(key,label){
     <textarea id="lifeSummaryEdit" style="min-height:260px" placeholder="Введите итог месяца">${esc(old)}</textarea>
     <div class="row" style="margin-top:14px">
       <button class="btn danger" id="lifeSummaryDel" ${old?'':'disabled'}>Удалить</button>
-      <span class="spacer"></span><button class="btn" data-close>Отмена</button>
+      <span class="spacer"></span><button class="btn" id="lifeSummaryBack">Отмена</button>
       <button class="btn primary" id="lifeSummarySave">Сохранить</button>
     </div>`);
   $('#lifeSummarySave').onclick=()=>{
     const text=$('#lifeSummaryEdit').value.trim();
     /* пустая строка, а не delete: иначе вернулся бы текст из LIFE_SUMMARIES */
     DB.lifeSummaries[key]=text;
-    save(); closeSheet(); rLife(); toast(text?'Итог сохранён':'Итог удалён');
+    save(); rLife(); lifeMonthSheet(key+'-01'); toast(text?'Итог сохранён':'Итог удалён');
   };
+  $('#lifeSummaryBack').onclick=()=>lifeMonthSheet(key+'-01');
   $('#lifeSummaryDel').onclick=()=>{
-    DB.lifeSummaries[key]=''; save(); closeSheet(); rLife(); toast('Итог удалён');
+    DB.lifeSummaries[key]=''; save(); rLife(); lifeMonthSheet(key+'-01'); toast('Итог удалён');
   };
 }
+/* Тап по наступившему месяцу открывает окно итогов (lifeMonthSheet):
+   там и итог, и сборка итога ИИ, и переход на 1-е число, и ручная правка.
+   Прежние двойной тап и удержание больше не нужны — всё в одном окне. */
 function bindLifeMonth(b){
-  const d=b.dataset.d, key=d.slice(0,7), label=`${MONS[pISO(d).getMonth()]} ${pISO(d).getFullYear()}`;
-  let clickTimer=null, held=false;
-  b.onclick=()=>{
-    if(held){held=false;return}
-    if(clickTimer){clearTimeout(clickTimer);clickTimer=null;lifeSummarySheet(key,label);return}
-    clickTimer=setTimeout(()=>{clickTimer=null;cur=d;go('day')},260);
-  };
-  b.addEventListener('pointerdown',()=>{
-    held=false; clearTimeout(b._lifeHold);
-    b._lifeHold=setTimeout(()=>{
-      held=true; if(navigator.vibrate)navigator.vibrate(15);
-      editLifeSummary(key,label);
-    },500);
-  });
-  ['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>clearTimeout(b._lifeHold)));
-  b.addEventListener('pointermove',()=>clearTimeout(b._lifeHold));
+  b.onclick=()=>lifeMonthSheet(b.dataset.d);
 }
 function lifeGrid(){
   const from='2022-01-01', last=today().slice(0,7)+'-01';
@@ -1940,7 +1925,7 @@ function lifeGrid(){
     }).join('');
     years.push(`<div class="life-year"><h3>${y} год</h3><div class="life-months">${cells}</div></div>`);
   }
-  return `<div class="card"><div class="small muted life-month-hint" style="margin-bottom:10px">Тап — открыть первый день месяца. Двойной тап или удержание — показать итог. Январь — Декабрь в одной строке.</div>${years.join('')}</div>
+  return `<div class="card"><div class="small muted life-month-hint" style="margin-bottom:10px">Нажмите на месяц — откроются его итоги: их можно собрать с помощью ИИ, поправить или перейти к 1-му числу.</div>${years.join('')}</div>
     <div class="card"><div class="life-legend small muted"><span>Меньше баллов</span><i></i><i class="lm1"></i><i class="lm2"></i><i class="lm3"></i><i class="lm4"></i><span>Больше баллов</span><span style="margin-left:8px">· рамка — текущий месяц</span></div></div>`;
 }
 
@@ -2852,8 +2837,12 @@ try{
    дня — только с галочкой CFG.aiTexts. Цели и заметки — позже, в aiExtras(). */
 const AI_DEF_MODEL='gemini-3.6-flash';
 const AI_ACTS=ACTS.filter(a=>!['dating','sexn','hand'].includes(a.k)&&a.k!=='sport');
-const aiBusy={};
-let aiPer={kind:'w',anchor:today()};
+const aiBusy={}, aiLastErr={};
+/* Выбранный период разбора помним в sessionStorage: на телефоне страница
+   при переключении приложений может перезагрузиться, и без этого карточка
+   открывалась бы на другой неделе — как будто совет пропал. */
+let aiPer=(()=>{try{const v=JSON.parse(sessionStorage.getItem('diary.aiPer'));if(v&&/^[wm]$/.test(v.kind)&&/^\d{4}-\d\d-\d\d$/.test(v.anchor))return v}catch(e){}return{kind:'w',anchor:today()}})();
+const aiPerSave=()=>{try{sessionStorage.setItem('diary.aiPer',JSON.stringify(aiPer))}catch(e){}};
 
 const monday=d=>{const x=pISO(d);const k=(x.getDay()+6)%7;return addD(d,-k)};
 const ym=d=>d.slice(0,7);
@@ -2890,6 +2879,7 @@ function aiDayLine(d,withText){
   if(x.restHr) p.push('пульс покоя '+x.restHr);
   if(x.weight) p.push('вес '+x.weight);
   if(x.steps) p.push('шаги '+x.steps);
+  if(String(x.diet||'').trim()) p.push('питание: '+String(x.diet).trim().replace(/\s+/g,' '));
   if(x.sport){
     const ex=Object.entries(x.ex||{}).filter(([,v])=>String(v).trim()).map(([k,v])=>`${k} — ${v}`);
     p.push('тренировка'+(ex.length?': '+ex.join('; '):''));
@@ -2949,15 +2939,21 @@ const AI_SYSTEM=`Ты — внимательный личный коуч по с
 Пункты начинай с «- ». Без диагнозов и без советов по дозировкам лекарств и добавок; если что-то выглядит тревожно для здоровья — мягко предложи обсудить это с врачом.`;
 
 async function aiAsk(kind,anchor){
+  const when=kind==='d'?'завтра':kind==='w'?'следующую неделю':'следующий месяц';
+  return aiCall(AI_SYSTEM.replace('{когда}',when),aiPrompt(kind,anchor));
+}
+/* Один запрос к Gemini: инструкция + текст. Общий для советов и итогов месяца. */
+async function aiCall(system,prompt,opt={}){
   if(!CFG.aiKey) throw new Error('NO_KEY');
   const model=(CFG.aiModel||AI_DEF_MODEL).trim();
-  const when=kind==='d'?'завтра':kind==='w'?'следующую неделю':'следующий месяц';
   const body={
-    systemInstruction:{parts:[{text:AI_SYSTEM.replace('{когда}',when)}]},
-    contents:[{role:'user',parts:[{text:aiPrompt(kind,anchor)}]}],
-    generationConfig:{temperature:0.7,maxOutputTokens:4096}
+    systemInstruction:{parts:[{text:system}]},
+    contents:[{role:'user',parts:[{text:prompt}]}],
+    /* Модели Gemini 3 сначала «думают», и размышления входят в этот лимит:
+       при 4096 ответ на месяц мог прийти пустым или обрезанным. */
+    generationConfig:{temperature:opt.temperature??0.7,maxOutputTokens:16384}
   };
-  const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),90000);
+  const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),180000);
   let r;
   try{
     r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',
@@ -2972,12 +2968,12 @@ async function aiAsk(kind,anchor){
   const c=j&&j.candidates&&j.candidates[0];
   const text=((c&&c.content&&c.content.parts)||[]).filter(p=>!p.thought).map(p=>p.text||'').join('').trim();
   if(!text) throw new Error(c&&c.finishReason?'EMPTY:'+c.finishReason:'EMPTY');
-  return {text,model};
+  return {text,model,cut:c&&c.finishReason==='MAX_TOKENS'};
 }
 function aiErr(e){
   const m=String(e&&e.message||e), s=e&&e.status;
   if(m==='NO_KEY') return 'Сначала вставьте ключ Gemini в настройках (⚙).';
-  if(m==='TIMEOUT') return 'Gemini не ответил за полторы минуты. Попробуйте ещё раз.';
+  if(m==='TIMEOUT') return 'Gemini не ответил за три минуты. Попробуйте ещё раз.';
   if(m==='NETWORK') return 'Нет связи с Gemini — проверьте интернет.';
   if(/location is not supported/i.test(m)) return 'Gemini API недоступен из вашей страны (так ответил Google).';
   if(/API key not valid|API_KEY_INVALID/i.test(m)||s===401) return 'Ключ Gemini не подошёл. Проверьте его в настройках (⚙).';
@@ -2996,13 +2992,14 @@ function aiHtml(t){
 }
 
 function aiBody(kind,anchor){
-  const key=aiKey(kind,anchor), a=(DB.advice||{})[key], busy=aiBusy[key];
+  const key=aiKey(kind,anchor), a=(DB.advice||{})[key], busy=aiBusy[key], err=aiLastErr[key];
   const what=kind==='d'?'этот день на фоне прошлой недели':kind==='w'?'неделю по дням и сравнит с прошлой':'месяц по дням и сравнит с прошлым';
   const fields='сон, пульс, вес, шаги, тренировки, активности, добавки'+(CFG.aiTexts?', тексты записей':'');
   return `
-    ${busy?`<div class="small muted ai-wait">Gemini думает…</div>`
+    ${err&&!busy?`<div class="small ai-err">${esc(err)}</div>`:''}
+    ${busy?`<div class="small muted ai-wait">Gemini думает… Можно уйти на другую вкладку — ответ сохранится сам.</div>`
       : a?`<div class="ai-text">${aiHtml(a.text)}</div>
-        <div class="small muted" style="margin-top:8px">${esc(fmtTS(a.at))} · ${esc(a.model||'')}${a.texts?' · с текстами записей':''}</div>`
+        <div class="small muted" style="margin-top:8px">${esc(fmtTS(a.at))} · ${esc(a.model||'')}${a.texts?' · с текстами записей':''}${a.cut?' · ответ обрезан по длине':''}</div>`
       : `<div class="small muted">Gemini разберёт ${what}: ${fields}.</div>`}
     <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px">
       ${CFG.aiKey
@@ -3034,12 +3031,12 @@ function aiMount(where){
         <button class="dn-btn" id="aiNx" aria-label="Следующий период" ${b>=today()?'disabled':''}><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
       </div>
       <div class="ai-in">${aiBody(kind,anchor)}</div></div>`);
-    $('#aiKind').onclick=e=>{const v=e.target.closest('[data-v]');if(!v)return;aiPer={kind:v.dataset.v,anchor:aiPer.anchor};rStats()};
+    $('#aiKind').onclick=e=>{const v=e.target.closest('[data-v]');if(!v)return;aiPer={kind:v.dataset.v,anchor:aiPer.anchor};aiPerSave();rStats()};
     const step=dir=>{
       if(aiPer.kind==='w') aiPer.anchor=addD(monday(aiPer.anchor),7*dir);
       else{const d=pISO(ym(aiPer.anchor)+'-01');d.setMonth(d.getMonth()+dir);aiPer.anchor=iso(d)}
       if(aiPer.anchor>today()) aiPer.anchor=today();
-      rStats();
+      aiPerSave(); rStats();
     };
     $('#aiPv').onclick=()=>step(-1); $('#aiNx').onclick=()=>step(1);
     aiBind(kind,anchor,'aiCard-p');
@@ -3060,13 +3057,18 @@ function aiBind(kind,anchor,id){
   const go=card.querySelector('.ai-go'); if(go) go.onclick=async()=>{
     const key=aiKey(kind,anchor);
     if(aiBusy[key]) return;
-    aiBusy[key]=true; aiRefresh();
+    aiBusy[key]=true; delete aiLastErr[key]; aiRefresh();
     try{
       const r=await aiAsk(kind,anchor);
       DB.advice=DB.advice||{};
-      DB.advice[key]={text:r.text,at:Date.now(),model:r.model,texts:!!CFG.aiTexts};
+      DB.advice[key]={text:r.text,at:Date.now(),model:r.model,texts:!!CFG.aiTexts,...(r.cut?{cut:true}:{})};
       save();
-    }catch(e){ toast(aiErr(e)); setTimeout(()=>{const c=$('#'+id+' .ai-in');if(c&&!aiBusy[key])c.insertAdjacentHTML('afterbegin',`<div class="small" style="color:var(--warn);margin-bottom:8px">${esc(aiErr(e))}</div>`)},0) }
+      toast('Совет сохранён');
+    }catch(e){
+      /* ошибку держим в карточке до следующей попытки: всплывашка пропадает
+         через пару секунд, и после смены вкладки казалось, что совет исчез */
+      aiLastErr[key]=aiErr(e); toast(aiLastErr[key]);
+    }
     finally{ delete aiBusy[key]; aiRefresh(); }
   };
 }
@@ -3096,6 +3098,90 @@ function aiSettings(){
   $('#aiKDel').onclick=()=>{CFG.aiKey='';saveCfg();closeSheet();aiRefresh();toast('Ключ удалён')};
 }
 
+/* ---- итог месяца на «Жизни»: окно по нажатию на плитку ----
+   Тап открывает окно месяца: текущий итог, цифры, «Собрать итог ИИ»,
+   переход на 1-е число и ручная правка. Ответ ИИ приходит черновиком
+   и заменяет итог только по кнопке — готовые итоги молча не затираются.
+   Черновики и ожидание живут в памяти по ключу месяца: окно можно закрыть,
+   ответ дождётся и покажется при следующем открытии. */
+const lifeBusy={}, lifeDraft={}, lifeErr={};
+const MON_NOM=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const AI_LIFE_SYSTEM=`Ты составляешь сжатый итог месяца для личного дневника. Пиши по-русски, телеграфным стилем, без вступлений, оценок, советов и Markdown. Строго этот формат, каждая часть с новой строки; часть, для которой в данных ничего нет, пропускай целиком:
+<где был — одной строкой без подписи и только если это видно из записей; переезды с датой в скобках, например «Россия + Вьетнам (с 24.04).»>
+Тренировки: виды и лучшие результаты, например «зал, подтягивания 20–24, отжимания 110, планка 4, бег».
+Питание: коротко, что преобладало.
+Сон: разброс и среднее, например «5–9 ч; в среднем ~7,5 ч».
+Вес: разброс, например «68,6–70 кг».
+Развитие: английский, книги, проекты, новые привычки — что было.
+Ключевые моменты: 3–8 главных событий месяца через запятую.
+Всего не больше 450 знаков. Используй только присланные данные, ничего не придумывай. Цифры для «Сон» и «Вес» бери из строки «Факты».`;
+function lifePrompt(key,withText){
+  const a=key+'-01', n=pISO(a); n.setMonth(n.getMonth()+1); n.setDate(0);
+  const b=iso(n)>today()?today():iso(n);
+  const days=aiDays(a,b), X=days.map(d=>DB.days[d]).filter(Boolean);
+  const rng=(f,suf)=>{const l=X.map(f).filter(v=>typeof v==='number'&&v>0);
+    return l.length?`от ${r1(Math.min(...l))} до ${r1(Math.max(...l))}${suf}, в среднем ${r1(avg(l))}${suf}`:'нет данных'};
+  const L=[`Месяц: ${MON_NOM[pISO(a).getMonth()]} ${a.slice(0,4)}${iso(n)>today()?' (ещё идёт, данные по сегодняшний день)':''}.`,
+    `Факты: сон ${rng(x=>x.sleepH,' ч')}; вес ${rng(x=>x.weight,' кг')}; тренировок ${X.filter(x=>x.sport).length}; дней с записями ${X.filter(x=>Object.keys(x).length).length} из ${days.length}.`,
+    '','По дням:'];
+  days.forEach(d=>L.push('- '+aiDayLine(d,withText)));
+  return L.join('\n');
+}
+function lifeMonthSheet(d){
+  const key=d.slice(0,7), label=`${MON_NOM[pISO(d).getMonth()]} ${d.slice(0,4)}`;
+  const end=lifeMonthStart(key+'-01',1), days=sortedDays().filter(x=>x>=key+'-01'&&x<end);
+  const total=Math.round(days.reduce((s,x)=>s+score(x),0)*10)/10;
+  const text=lifeSummaryText(key), busy=lifeBusy[key], draft=lifeDraft[key], err=lifeErr[key];
+  const box = busy ? `<div class="small muted ai-wait">Gemini собирает итог… Окно можно закрыть — черновик дождётся.</div>`
+    : draft!=null ? `<div class="small muted" style="margin-bottom:6px">Черновик от ИИ — поправьте, если нужно, и сохраните.</div>
+        <textarea id="lsDraft" style="min-height:170px">${esc(draft)}</textarea>
+        <div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">
+          <button class="btn sm primary" id="lsSave">${text?'Заменить итог':'Сохранить итог'}</button>
+          <button class="btn sm ghost" id="lsDrop">Отбросить</button></div>`
+    : CFG.aiKey ? `${err?`<div class="small ai-err">${esc(err)}</div>`:''}
+        <label class="row small" style="align-items:flex-start;margin-bottom:8px"><input type="checkbox" id="lsTexts" ${CFG.aiTexts?'checked':''} style="width:auto;margin-top:3px">
+          <span>С текстами записей — без них ИИ не узнает, где вы были и что происходило</span></label>
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <button class="btn sm primary" id="lsGo">${text?'Пересобрать итог ИИ':'Собрать итог ИИ'}</button>
+          <button class="btn sm ghost" id="lsPrev">Что отправится</button></div>`
+    : `<button class="btn sm primary" id="lsSet">Подключить Gemini</button>`;
+  openSheet(`<h2>Итоги: ${esc(label)}</h2>
+    <div class="small muted" style="margin:-8px 0 10px">${days.length} дн. с записями · ${total} баллов</div>
+    <div class="life-summary">${esc(text||'Итог за этот месяц пока не добавлен.')}</div>
+    <div class="ls-ai" id="lsAi">${box}</div>
+    <div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">
+      <button class="btn sm" id="lsDay">Открыть 1-е число</button>
+      <button class="btn sm ghost" id="lsEdit">Править вручную</button>
+      <span class="spacer"></span><button class="btn primary" data-close>Закрыть</button></div>`);
+  const open=()=>{ if($('#modal').classList.contains('on')&&$('#lsAi')&&$('#sheet h2')?.textContent==='Итоги: '+label) lifeMonthSheet(d) };
+  $('#lsDay').onclick=()=>{closeSheet();cur=d;go('day')};
+  $('#lsEdit').onclick=()=>editLifeSummary(key,label);
+  const st=$('#lsSet'); if(st) st.onclick=aiSettings;
+  const pv=$('#lsPrev'); if(pv) pv.onclick=()=>{
+    openSheet(`<h2>Что отправится в Gemini</h2>
+    <div class="small muted" style="margin-bottom:8px">Ровно этот текст, плюс инструкция по формату итога. «Свидание», «Секс», «Р», алкоголь, вещества, заметки и раздел «Ж» не отправляются.</div>
+    <pre class="ai-pre">${esc(lifePrompt(key,$('#lsTexts').checked))}</pre>
+    <div class="row" style="margin-top:12px"><button class="btn" id="lsBack">← Назад</button><span class="spacer"></span><button class="btn primary" data-close>Понятно</button></div>`);
+    $('#lsBack').onclick=()=>lifeMonthSheet(d);
+  };
+  const dr=$('#lsDraft'); if(dr) dr.oninput=()=>{lifeDraft[key]=dr.value};
+  const sv=$('#lsSave'); if(sv) sv.onclick=()=>{
+    const t=$('#lsDraft').value.trim(); if(!t) return toast('Черновик пустой');
+    DB.lifeSummaries=DB.lifeSummaries||{}; DB.lifeSummaries[key]=t;
+    delete lifeDraft[key]; save(); rLife(); lifeMonthSheet(d); toast('Итог сохранён');
+  };
+  const dp=$('#lsDrop'); if(dp) dp.onclick=()=>{delete lifeDraft[key]; lifeMonthSheet(d)};
+  const go_=$('#lsGo'); if(go_) go_.onclick=async()=>{
+    const withText=$('#lsTexts').checked;
+    lifeBusy[key]=true; delete lifeErr[key]; lifeMonthSheet(d);
+    try{
+      const r=await aiCall(AI_LIFE_SYSTEM,lifePrompt(key,withText),{temperature:0.4});
+      lifeDraft[key]=r.text.replace(/\*\*/g,'').trim();
+      toast('Черновик итога готов');
+    }catch(e){ lifeErr[key]=aiErr(e); toast(lifeErr[key]) }
+    finally{ delete lifeBusy[key]; open() }
+  };
+}
 /* ================= СТАРТ ================= */
 load(); applyTheme(); render();
 /* Обмен при запуске и при каждом возвращении к приложению: на телефоне
