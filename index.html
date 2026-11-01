@@ -339,23 +339,25 @@ input[type=text],input[type=number],input[type=date],input[type=time],input[type
 .dn-score{min-width:34px;height:34px;padding:0 7px;border-radius:10px;background:var(--accent);color:var(--surface);
   display:grid;place-items:center;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;flex:none}
 .top-in .wbadge{height:34px}
-/* добавки дня — одной строкой, цвет категории на самой таблетке */
-.supp-flat .chip{background:color-mix(in srgb,var(--supp-color) 27%,var(--surface-2));border-color:var(--supp-color);color:var(--ink);font-size:13px;padding:5px 11px}
-/* активности — таблетки «значок + название», счётчик справа */
+/* добавки дня: группы по категориям — чуть плотнее по вертикали */
+#spc .supp-group{margin-bottom:9px}
+#spc .supp-group:last-child{margin-bottom:0}
+#spc .supp-group-title{margin-bottom:5px}
+/* активности — по группам (разбивка намеренная), внутри группы таблетки
+   «значок + название», счётчик справа */
 .agroup+.agroup{margin-top:10px}
 .ghd{font-size:11.5px;margin-bottom:5px}
-.acts{display:flex;flex-wrap:wrap;gap:6px}
-.act{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 12px 6px 9px;text-align:left;min-height:36px}
-.act .ic{font-size:16px;line-height:1}
-.act .lb{font-size:13px;margin:0;line-height:1.2}
+.acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.act{display:flex;align-items:center;gap:5px;border-radius:10px;padding:5px 7px;text-align:left;min-height:36px;min-width:0}
+.act .ic{font-size:15px;line-height:1;flex:none}
+.act{position:relative}
+@media(max-width:379px){.act{padding:5px 5px;gap:4px}.act .ic{font-size:14px}.act .lb{font-size:12px}}
+/* слова не рвём посередине («Знако-мые»): переносим только между словами */
+.act .lb{font-size:12.5px;margin:0;line-height:1.15;min-width:0;overflow-wrap:normal;word-break:normal}
 .act .n{position:static;opacity:1;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);
-  color:var(--surface);font-size:11px;line-height:18px;text-align:center;margin-left:1px;order:3}
+  color:var(--surface);font-size:10.5px;line-height:18px;text-align:center;
+  position:absolute;top:-6px;right:-4px;box-shadow:0 0 0 2px var(--surface)}
 .act .n:empty{display:none}
-/* Группы активностей идут одним потоком: заголовок над каждой группой
-   и перенос внутри неё давали строки с одной таблеткой. Порядок групп
-   сохранён, а значки и так говорят, о чём таблетка. */
-#acts{display:flex;flex-wrap:wrap;gap:6px 6px}
-#acts .agroup,#acts .agroup>.acts{display:contents}
 /* спорт: поля упражнений ещё плотнее */
 #spt + .grid2 .fld>span{font-size:11.5px}
 #spt + .grid2 input{padding-top:6px;padding-bottom:6px}
@@ -1308,7 +1310,7 @@ function rDay(){
   <div class="card">
     <h2>💊 Добавки <span class="right">${(x.supp||[]).length} шт</span></h2>
     ${(DB.suppUnknown||[]).length?`<button class="btn sm ghost" id="spUnk" style="margin-bottom:9px">⚠ Нераспознанных названий: ${DB.suppUnknown.length}</button>`:''}
-    <div class="chips supp-flat" id="spc">${suppChips(x.supp||[])}</div>
+    <div class="chips" id="spc">${suppChips(x.supp||[])}</div>
     <div class="row" style="margin-top:11px">
       ${prev?`<button class="btn sm" id="rep">Как ${fmtD(prev)}</button>`:''}
       <button class="btn sm" id="spAdd">+ Другая</button>
@@ -1328,8 +1330,9 @@ function rDay(){
 
   <div class="card">
     <h2>📊 Активности дня <span class="right">тап +1, удержание −1</span></h2>
-    <div id="acts" class="acts">${ACT_GROUPS.map(g=>`
-      <div class="agroup" title="${esc(g.g)}">
+    <div id="acts">${ACT_GROUPS.map(g=>`
+      <div class="agroup">
+        <div class="ghd">${g.g}</div>
         <div class="acts">${g.items.map(a=>{
           const v=+x[a.k]||0;
           return `<button class="act ${v?'on':''}" data-k="${a.k}"${a.hint?` title="${esc(a.hint)}"`:''}><span class="n">${v||''}</span>
@@ -1421,11 +1424,9 @@ function suppGroupHtml(names,selected,cls){
       <div class="chips">${items.map(n=>`<button class="chip ${cls} ${selected.includes(n)?'on':''}" data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>
     </div>`).join('');
 }
-/* На главном экране — одна строка таблеток без заголовков категорий:
-   выбранных обычно три-пять, и заголовок над каждой съедал высоту.
-   Категорию по-прежнему видно по цвету таблетки. */
+/* Разбивка по категориям на главном экране — намеренная, её не убирать. */
 function suppChips(list){
-  return [...new Set(list)].map(n=>`<button class="chip sp on" data-n="${esc(n)}" style="--supp-color:${suppCategory(n).color}" title="${esc(suppCategory(n).label)}">${esc(n)}</button>`).join('');
+  return suppGroupHtml([...new Set(list)],list,'sp');
 }
 function prevDayWith(f){
   let d=addD(cur,-1);
