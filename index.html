@@ -716,6 +716,9 @@ const DEF_CFG={theme:'light',clientId:'',fileId:'',cloudSeen:'',everSignedIn:fal
 /* sec — списки разделов целей и заметок, secDel — удалённые вручную ключи */
 const LIFE_BIRTH='1988-08-23';
 /* Краткие итоги по месяцам, начиная с января 2022. Ключи — YYYY-MM. */
+/* Итоги месяцев с 2 ноября 2026 живут только в данных (DB.lifeSummaries,
+   облако, «Экспорт JSON»). Раньше они лежали здесь текстом; архив прежнего
+   содержимого — файл «итоги-месяцев-2022-2026.json» в папке проекта. */
 const LIFE_SUMMARIES={};
 const BLANK=()=>({days:{},goals:[],notes:{},supps:[],sec:{},secDel:{},lifeBirth:LIFE_BIRTH,lifeSummaries:{},updated:0});
 let DB=BLANK(), CFG={...DEF_CFG}, cur=today(), tab='day';
@@ -1871,7 +1874,10 @@ function shiftCalendarHtml(year){
   for(let m=0;m<12;m++){
     const first=`${year}-${pad(m+1)}-01`, d=pISO(first), count=new Date(year,m+1,0).getDate();
     const cells=[];
-    for(let i=0;i<d.getDay();i++) cells.push('<i></i>');
+    /* Неделя в сетке начинается с понедельника (заголовок «пн … вс»), а
+       getDay() считает с воскресенья (0). Без пересчёта все дни уезжали на
+       одну клетку вправо: понедельник 02.11.2026 стоял под «вт». */
+    for(let i=0;i<(d.getDay()+6)%7;i++) cells.push('<i></i>');
     for(let day=1;day<=count;day++){
       const key=`${year}-${pad(m+1)}-${pad(day)}`;
       const manual=DB.days[key]?.work!=null;
