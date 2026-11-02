@@ -710,6 +710,7 @@ const ACT_W=()=>Object.fromEntries(ACTS.map(a=>[a.k,a.w0?0:1]));
 /* lastSync — момент последнего удачного обмена этого устройства; cloudSeen
    и fileId остались от прежней схемы синхронизации и больше не читаются. */
 const DEF_CFG={theme:'light',clientId:'',fileId:'',cloudSeen:'',everSignedIn:false,lastSync:0,autoSync:true,aiKey:'',aiModel:'',
+  bandUrl:'',bandKey:'',bandAt:0,bandMsg:'',
   weights:ACT_W(), suppOrder:[], hidden:[]};
 
 /* sec — списки разделов целей и заметок, secDel — удалённые вручную ключи */
@@ -1996,6 +1997,7 @@ function rStats(){
       <button class="btn sm" id="exC">Экспорт CSV</button>
       <button class="btn sm" id="imJ">Импорт JSON</button>
       <button class="btn sm" id="imB">Импорт браслета</button>
+      <button class="btn sm" id="bsB">Браслет с сервера</button>
       <button class="btn sm" id="mkPub">Файл для публикации</button>
       <button class="btn sm" id="cfg">Синхронизация</button>
     </div>
@@ -2006,6 +2008,7 @@ function rStats(){
   $('#exC').onclick=exportCSV;
   $('#imJ').onclick=importJSON;
   $('#imB').onclick=importBand;
+  $('#bsB').onclick=bandSheet;
   $('#mkPub').onclick=makePublic;
   $('#cfg').onclick=syncSheet;
   const hm=$('#hm');
@@ -2227,7 +2230,15 @@ const WK_MAP={
   muay_thai:['Прочее','муай-тай',0],       boxing:['Прочее','бокс',0],
   parallel_skiing:['Прочее','лыжи',0],     yoga:['Прочее','йога',0],
   elliptical:['Прочее','эллипс',0],        rowing:['Прочее','гребля',0],
-  jump_rope:['Прочее','скакалка',0]
+  jump_rope:['Прочее','скакалка',0],
+  /* ниже — типы, которые приходят только из Health Connect */
+  pilates:['Прочее','пилатес',0],          stretching:['Прочее','растяжка',0],
+  dancing:['Прочее','танцы',0],            football:['Прочее','футбол',0],
+  tennis:['Прочее','теннис',0],            table_tennis:['Прочее','настольный теннис',0],
+  badminton:['Прочее','бадминтон',0],      basketball:['Прочее','баскетбол',0],
+  volleyball:['Прочее','волейбол',0],      climbing:['Прочее','скалолазание',0],
+  stair_climbing:['Кардио','лестница',0],  surfing:['Прочее','сёрфинг',0],
+  paddling:['Прочее','гребля',0],          other:['Прочее','тренировка',0]
 };
 const kmTxt=v=>String(Math.round(v*10)/10).replace('.',',');
 /* Вставка от браслета помечается в x.exBand, чтобы повторный импорт
@@ -2273,7 +2284,7 @@ function mergeWorkouts(rows,st){
 }
 /* Сводит выгрузку в дневник. Данные прибора считаем точнее ручных,
    поэтому перезаписываем; счётчик ведём отдельно, чтобы показать в отчёте. */
-function mergeBand(kind,rows,st){
+function mergeBand(kind,rows,st,exact){
   for(const r of rows){
     const d=r.date;
     if(!isDate(d)) continue;
@@ -2290,7 +2301,8 @@ function mergeBand(kind,rows,st){
       if(mn>0) set('sleepH',Math.round(mn/60*100)/100);
       /* +4 ч только с SLEEP_TZ_FROM, как в migrateSleepTZ: раньше сдвигались
          все даты, и повторный импорт портил время сна за 2023–2026 годы */
-      const tz=t=>d>=SLEEP_TZ_FROM?shiftTime4(t):t;
+      /* exact — время уже местное (Health Connect хранит пояс у каждой записи) */
+      const tz=t=>!exact&&d>=SLEEP_TZ_FROM?shiftTime4(t):t;
       set('bed',tz(hhmm(r.bedtime_local))); set('rise',tz(hhmm(r.wakeup_local)));
       const sc=num(r.sleep_score); if(sc>0) set('sleepScore',Math.round(sc));
       const dp=num(r.deep_min); if(dp>0) set('deepMin',Math.round(dp));
@@ -2366,6 +2378,98 @@ function chooseBand(){
       <button class="btn primary" data-close>Готово</button></div>`);
   };
   i.click();
+}
+/* ================= БРАСЛЕТ С СЕРВЕРА =================
+   Health Connect раз в сутки кладёт на Google Диск архив «Здоровье и спорт.zip».
+   VPS раз в час проверяет его (band-sync) и выкладывает band.json — суточные
+   итоги по местным датам: сон со стадиями, минимальный пульс, шаги, тренировки.
+   Отдаёт файл только по ключу в заголовке X-Band-Key. Сервер в облачную копию
+   Дневника не пишет: принимаем данные здесь и дальше идёт обычный обмен,
+   поэтому слияние остаётся в одном месте.
+   Каждый день помечается подписью bandSig — хэшем пришедших данных. Пока они не
+   изменились, день не трогаем: иначе ручная правка «Лёг» затиралась бы каждые
+   полчаса. Подпись лежит в записи дня и уезжает в облако, так что второе
+   устройство тот же день повторно не применит. */
+const BAND_EVERY=30*60e3;
+const BAND={busy:false};
+const bandHash=s=>{let h=5381;for(let i=0;i<s.length;i++)h=((h*33)^s.charCodeAt(i))>>>0;return h.toString(36)};
+function bandApply(days,st){
+  for(const[d,v]of Object.entries(days)){
+    if(!isDate(d)||d>today()||!isObj(v)) continue;
+    const sig=bandHash(JSON.stringify(v));
+    if(DB.days[d]&&DB.days[d].bandSig===sig) continue;
+    const s=v.sleep;
+    if(isObj(s)) mergeBand('sleep',[{date:d,total_duration_min:s.total_min,bedtime_local:s.bed,
+      wakeup_local:s.rise,deep_min:s.deep_min,rem_min:s.rem_min}],st,true);
+    if(v.min_hr||v.rest_hr) mergeBand('hr',[{date:d,min_hr:v.min_hr,resting_hr:v.rest_hr}],st);
+    if(v.steps) mergeBand('steps',[{date:d,steps:v.steps}],st);
+    const x=DB.days[d]=DB.days[d]||{};
+    /* вес вводится руками, с весов он придёт только если поле пустое */
+    if(num(v.weight)>0&&x.weight==null) x.weight=num(v.weight);
+    if(Array.isArray(v.workouts)&&v.workouts.length)
+      mergeWorkouts(v.workouts.map(w=>({date:d,activity:w.activity,distance_km:w.distance_km})),st);
+    x.bandSig=sig; st.days.add(d);
+  }
+}
+async function bandPull(interactive){
+  if(!CFG.bandUrl||!CFG.bandKey||BAND.busy) return null;
+  if(!interactive&&Date.now()-(CFG.bandAt||0)<BAND_EVERY) return null;
+  BAND.busy=true;
+  try{
+    const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),30000);
+    let r;
+    try{ r=await fetch(CFG.bandUrl,{headers:{'X-Band-Key':CFG.bandKey},cache:'no-store',signal:ctl.signal}) }
+    finally{ clearTimeout(t) }
+    if(r.status===403) throw new Error('сервер не принял ключ');
+    if(r.status===503) throw new Error('на сервере ещё нет данных — выгрузка с Диска пока не приходила');
+    if(!r.ok) throw new Error('сервер ответил '+r.status);
+    const j=await r.json();
+    if(!j||j.v!==1||!isObj(j.days)) throw new Error('непонятный ответ сервера');
+    const st={days:new Set()};
+    bandApply(j.days,st);
+    const src=j.source&&j.source.modified?new Date(j.source.modified).getTime():0;
+    CFG.bandAt=Date.now();
+    CFG.bandMsg=`Забрано ${fmtTS(CFG.bandAt)}. Выгрузка Health Connect от ${src?fmtTS(src):'—'}, `+
+      `дней в ней ${Object.keys(j.days).length}, обновлено здесь ${st.days.size}.`;
+    saveCfg();
+    if(st.days.size){ migrateActs(); save(); renderSafe() }
+    return st.days.size;
+  }catch(e){
+    const msg=e.name==='AbortError'?'сервер не ответил за 30 секунд'
+      :e instanceof TypeError?'нет связи с сервером':e.message;
+    /* ошибку тоже засчитываем как попытку: не долбим сервер при каждом возвращении */
+    CFG.bandAt=Date.now(); CFG.bandMsg='Ошибка: '+msg+' ('+fmtTS(CFG.bandAt)+')'; saveCfg();
+    if(interactive) throw new Error(msg);
+    return null;
+  }finally{ BAND.busy=false }
+}
+function bandSheet(){
+  openSheet(`<h2>Браслет с сервера</h2>
+    <div class="small" style="color:var(--ink-2);line-height:1.7;margin-bottom:12px">
+      Сервер раз в час берёт с Google Диска выгрузку Health Connect и готовит итоги по дням:
+      сон со стадиями, минимальный пульс, шаги, тренировки. Дневник забирает их сам при
+      открытии, не чаще раза в полчаса. Время сна — в том поясе, где вы были, без сдвига.
+      Оценки сна в Health Connect нет: её даёт только «Импорт браслета» из CSV.
+      Поправленный вручную день не перезаписывается, пока данные браслета за него не изменятся.</div>
+    <label class="fld" style="margin-bottom:10px"><span>Адрес</span>
+      <input type="text" id="bdU" value="${esc(CFG.bandUrl||'')}" spellcheck="false" placeholder="https://…/band/band.json"></label>
+    <label class="fld" style="margin-bottom:12px"><span>Ключ</span>
+      <input type="password" id="bdK" value="${esc(CFG.bandKey||'')}" autocomplete="off" spellcheck="false"></label>
+    <div class="row" style="gap:8px;flex-wrap:wrap">
+      <button class="btn sm primary" id="bdNow">Забрать сейчас</button>
+      ${CFG.bandKey?'<button class="btn sm ghost" id="bdOff">Отключить</button>':''}
+      <span class="spacer"></span><button class="btn" id="bdOk">Сохранить</button></div>
+    <div class="small" id="bdMsg" style="margin-top:10px;color:var(--ink-2);line-height:1.6">${esc(CFG.bandMsg||'Ещё не забирали.')}</div>`);
+  const grab=()=>{CFG.bandUrl=$('#bdU').value.trim();CFG.bandKey=$('#bdK').value.trim();saveCfg()};
+  $('#bdOk').onclick=()=>{grab();closeSheet();toast('Сохранено');bandPull(false)};
+  $('#bdNow').onclick=async()=>{grab();
+    const m=$('#bdMsg');
+    if(!CFG.bandUrl||!CFG.bandKey) return m.textContent='Нужны адрес и ключ.';
+    m.textContent='Забираю…';
+    try{ await bandPull(true); m.textContent=CFG.bandMsg }
+    catch(e){ m.innerHTML=`<span style="color:var(--warn)">${esc(e.message)}</span>` }
+  };
+  const off=$('#bdOff'); if(off) off.onclick=()=>{CFG.bandKey='';CFG.bandMsg='';CFG.bandAt=0;saveCfg();closeSheet();toast('Отключено')};
 }
 function importJSON(){
   const i=document.createElement('input');i.type='file';i.accept='.json';
@@ -3225,6 +3329,7 @@ load(); applyTheme(); render();
    значок с главного экрана обычно не перезагружает страницу, а поднимает
    её из памяти. Чаще раза в 20 секунд по возвращению к Диску не ходим. */
 function syncOnReturn(){
+  bandPull(false);   // сам решает, пора ли; работает и без входа в Google
   if(!autoOn()||Date.now()-SY.seen<20000) return;
   SY.seen=Date.now(); syncNow(false).catch(()=>{});
 }
