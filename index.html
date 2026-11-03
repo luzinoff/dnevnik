@@ -2350,9 +2350,20 @@ function bandApply(days,st){
     const s=v.sleep;
     if(isObj(s)) mergeBand('sleep',[{date:d,total_duration_min:s.total_min,bedtime_local:s.bed,
       wakeup_local:s.rise,deep_min:s.deep_min,rem_min:s.rem_min}],st,true);
-    if(v.min_hr||v.rest_hr) mergeBand('hr',[{date:d,min_hr:v.min_hr,resting_hr:v.rest_hr}],st);
-    if(v.steps) mergeBand('steps',[{date:d,steps:v.steps}],st);
     const x=DB.days[d]=DB.days[d]||{};
+    if(v.min_hr){ mergeBand('hr',[{date:d,min_hr:v.min_hr}],st); x.bandHr=v.min_hr }
+    else{
+      /* Сервер считает минимальный пульс только по замерам внутри сна. Нет их —
+         числа нет, и пульс, который ставил сам сервер, убираем: так ушло «92»
+         за 3 ноября — минимум по одной тренировке. bandHr помнит, что ставил
+         сервер. У дней, принятых раньше, признак — нет оценки сна: её даёт
+         только CSV, а пульс из CSV трогать нельзя. */
+      const mine=x.bandHr!=null?x.pulse===x.bandHr:(!!x.bandSig&&x.sleepScore==null);
+      if(x.pulse!=null&&mine) delete x.pulse;
+      delete x.bandHr;
+    }
+    if(v.rest_hr) mergeBand('hr',[{date:d,resting_hr:v.rest_hr}],st);
+    if(v.steps) mergeBand('steps',[{date:d,steps:v.steps}],st);
     /* вес вводится руками, с весов он придёт только если поле пустое */
     if(num(v.weight)>0&&x.weight==null) x.weight=num(v.weight);
     if(Array.isArray(v.workouts)&&v.workouts.length)
