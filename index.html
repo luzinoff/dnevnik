@@ -2366,6 +2366,11 @@ function bandApply(days,st){
     if(v.steps) mergeBand('steps',[{date:d,steps:v.steps}],st);
     /* вес вводится руками, с весов он придёт только если поле пустое */
     if(num(v.weight)>0&&x.weight==null) x.weight=num(v.weight);
+    if(Array.isArray(v.workouts)&&v.workouts.length){
+      /* сервер присылает все тренировки дня — прежние вставки браслета снимаем,
+         иначе после исправления вида («тренировка» → «бег») остались бы обе */
+      for(const f of Object.keys(x.exBand||{})) applyBand(x,f,'');
+    }
     if(Array.isArray(v.workouts)&&v.workouts.length)
       mergeWorkouts(v.workouts.map(w=>({date:d,activity:w.activity,distance_km:w.distance_km})),st);
     x.bandSig=sig; st.days.add(d);
