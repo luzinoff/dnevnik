@@ -401,13 +401,25 @@ button:focus-visible,.dn-date:focus-within{outline:2px solid var(--accent);outli
 @media(prefers-reduced-motion:reduce){.ai-wait{animation:none}}
 .ai-pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;background:var(--surface-2);
   border:1px solid var(--line-soft);border-radius:10px;padding:10px;max-height:52vh;overflow:auto;margin:0;overflow-wrap:anywhere}
+.sync-btn{position:relative}
+.sync-btn svg{width:17px;height:17px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;color:var(--ink-2)}
+.sync-btn .sync-dot{position:absolute;top:4px;right:4px;box-shadow:0 0 0 2px var(--surface)}
+.sync-btn.busy svg{animation:spin 1s linear infinite}
+.sync-btn.busy .sync-dot{animation:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.sync-btn.busy svg{animation:none}}
+/* на узком экране шапка «Дня» плотная: кнопки чуть меньше */
+@media(max-width:400px){.top-in{gap:6px}.dn-btn,.sync-btn,.dn-score,.top-in .wbadge{height:32px}.dn-btn,.sync-btn{width:32px}.dn-score{min-width:32px}
+  .dn-today{height:32px;padding:0 8px;font-size:12px}.dn-date{min-width:78px}}
+@media(max-width:379px){.top-in{gap:5px;padding-left:12px;padding-right:12px}.day-nav{gap:4px}
+  .dn-date{min-width:0;padding-left:4px!important;padding-right:4px!important}.dn-today{padding:0 7px}}
 </style>
 </head>
 <body>
 <header class="top"><div class="top-in">
   <div class="day-nav" id="dayNav" hidden></div>
   <div style="flex:1;min-width:0" id="ttlWrap"><h1 id="ttl">День</h1><div class="sub" id="sub"></div></div>
-  <span class="sync-dot" id="syncDot" title="Синхронизация"></span>
+  <button class="icon-btn sync-btn" id="syncBtn" title="Синхронизировать с Google Диском" aria-label="Синхронизировать с Google Диском"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/></svg><span class="sync-dot" id="syncDot"></span></button>
   <button class="icon-btn" id="themeBtn" title="Тема">◐</button>
 </div></header>
 <main class="app">
@@ -993,7 +1005,10 @@ const SY={busy:false,pending:false,timer:null,retry:null,fails:0,relogin:false,e
 let tok=null,tokExp=0,gis=null;
 const fmtTS=t=>t?new Date(+t).toLocaleString('ru',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
 
-function dot(s,t){const e=$('#syncDot');e.className='sync-dot'+(s?' '+s:'');e.title=t||'Синхронизация'}
+/* Состояние обмена — точка в углу кнопки синхронизации в шапке; подсказка
+   кнопки повторяет текст состояния, при обмене значок крутится. */
+function dot(s,t){const e=$('#syncDot');e.className='sync-dot'+(s?' '+s:'');
+  const b=$('#syncBtn'); if(b){b.title=(t||'Синхронизация')+' — нажмите, чтобы синхронизировать';b.classList.toggle('busy',s==='busy')}}
 const signedIn=()=>!!tok&&Date.now()<tokExp;
 const autoOn=()=>!!(CFG.clientId&&CFG.autoSync&&CFG.everSignedIn)&&!SY.relogin&&location.protocol!=='file:';
 /* Правка → обмен через 2,5 с. Идёт обмен — отмечаем, он догонит сам. */
@@ -1306,7 +1321,7 @@ function rDay(){
   $('#dayNav').innerHTML=`
     <button class="dn-btn" id="pv" title="Предыдущий день" aria-label="Предыдущий день"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
     <label class="dn-date" title="Выбрать дату">
-      <span class="dn-main">${isT?'Сегодня':yest?'Вчера':fmtD(cur)}</span>
+      <span class="dn-main">${isT?'Сегодня':yest?'Вчера':pISO(cur).getDate()+' '+MONS[pISO(cur).getMonth()]}</span>
       <span class="dn-sub">${esc(full)}</span>
       <input type="date" id="dp" value="${cur}" max="${today()}" aria-label="Дата"></label>
     <button class="dn-btn" id="nx" title="Следующий день" aria-label="Следующий день" ${isT?'disabled':''}><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
@@ -3328,10 +3343,19 @@ document.addEventListener('visibilitychange',()=>{document.hidden?flushPush():sy
 window.addEventListener('focus',syncOnReturn);
 window.addEventListener('pagehide',flushPush);
 window.addEventListener('beforeunload',flushPush);
-/* точка в шапке — ещё и вход в окно синхронизации: на телефоне её
-   подсказку не прочитать, а ошибку видно только там */
-$('#syncDot').style.cursor='pointer';
-$('#syncDot').addEventListener('click',syncSheet);
+/* Кнопка 🔄 в шапке — как в медкарте: одно нажатие сразу запускает обмен.
+   Не настроено (нет Client ID) или страница открыта с диска — открываем
+   окно синхронизации, там и объяснение, и настройки. */
+$('#syncBtn').addEventListener('click',async()=>{
+  if(!CFG.clientId||location.protocol==='file:') return syncSheet();
+  if(SY.busy) return toast('Обмен уже идёт');
+  try{
+    const r=await syncNow(true);
+    toast(!r?'Готово' : r.got&&r.sent?'Синхронизировано: правки получены и отправлены'
+      : r.got?'Синхронизировано: пришли правки с Диска'
+      : r.sent?'Синхронизировано: правки отправлены на Диск' : 'Синхронизировано, изменений нет');
+  }catch(e){ toast(hintAuth(e.message)) }
+});
 </script>
 </body>
 </html>
