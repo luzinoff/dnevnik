@@ -1540,7 +1540,13 @@ function bindDay(){
     if(!confirm(`Заменить добавки за ${fmtD(cur)} списком за ${fmtD(prev)}?\n\nТекущий список будет затёрт.`)) return;
     x.supp=[...(DB.days[prev].supp||[])]; save(); rDay();
   };
-  const clr=$('#spClr'); if(clr)clr.onclick=()=>{x.supp=[];save();rDay()};
+  /* очистка списка добавок дня — только после подтверждения: кнопка стоит
+     рядом с «+ Другая», и случайное нажатие стирало весь список */
+  const clr=$('#spClr'); if(clr)clr.onclick=()=>{
+    const n=(x.supp||[]).length;
+    if(!confirm(`Убрать все добавки за ${fmtD(cur)} (${n} шт)?`)) return;
+    x.supp=[];save();rDay();
+  };
   $('#spt').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;
     x.sport=+b.dataset.v; if(!x.sport){delete x.ex; delete x.exBand} save(); rDay()};
   $$('.exi').forEach(i=>i.onchange=()=>{
