@@ -80,6 +80,15 @@ nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:50;
 .ro.out{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
 .ro.out>b{color:var(--accent);white-space:nowrap;font-size:14px}
 .row{display:flex;align-items:center;gap:9px}
+/* Срок пребывания по штампу: тонкая строка над карточками «Сегодня».
+   Цвет предупреждает заранее: за неделю — акцент, в последние 3 дня и после — красный. */
+.visa{display:flex;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;color:var(--ink);
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:11px 15px;margin-bottom:12px;
+  box-shadow:var(--shadow);cursor:pointer}
+.visa .vz-main{flex:1;min-width:0}.visa .vz-sub{display:block;font-size:12.5px;color:var(--ink-3);margin-top:2px}
+.visa b{font-variant-numeric:tabular-nums}
+.visa.soon{border-color:color-mix(in srgb,var(--accent-2) 55%,transparent)}.visa.soon b{color:var(--accent-2)}
+.visa.late{border-color:color-mix(in srgb,var(--warn) 60%,transparent)}.visa.late b{color:var(--warn)}
 .spacer{flex:1}.muted{color:var(--ink-3)}.small{font-size:12.5px}
 .fld{display:block}
 .fld>span{display:block;font-size:12px;color:var(--ink-2);margin-bottom:5px}
@@ -1309,6 +1318,57 @@ const EXS=[['Растяжка',''],['Кардио',''],['Подтягивани�
            ['Отжимания',''],['Бицепс',''],['Приседания',''],['Пресс',''],
            ['Плавание / закаливание',''],['Загорание',''],['Прочее','']];
 
+/* ---------- Срок пребывания (виза / безвиз по штампу) ----------
+   Хранится в DB.visa и синхронизируется, как остальное. Пока его не
+   задавали, берём последний визаран: въезд во Вьетнам 27.10.2026, безвиз 45 дней.
+   День въезда считается первым днём, последний день = въезд + дней − 1. */
+const VISA_DEF={country:'Вьетнам',entry:'2026-10-27',days:45};
+const visaCfg=()=>Object.assign({},VISA_DEF,DB.visa||{});
+const dShort=s=>{const d=pISO(s);return d.getDate()+' '+MONS[d.getMonth()]};
+const dDiff=(a,b)=>Math.round((pISO(b)-pISO(a))/864e5);
+function visaInfo(){
+  const v=visaCfg(); if(!v.entry||!(v.days>0)) return null;
+  const last=addD(v.entry,v.days-1), left=dDiff(today(),last), day=dDiff(v.entry,today())+1;
+  return {...v,last,left,day};
+}
+function plDays(n){n=Math.abs(n);const a=n%10,b=n%100;return a===1&&b!==11?'день':a>=2&&a<=4&&(b<12||b>14)?'дня':'дней'}
+function visaHtml(){
+  const v=visaInfo(); if(!v) return '';
+  const until=dShort(v.last);
+  const main=v.left>0?`${esc(v.country)}: осталось <b>${v.left} ${plDays(v.left)}</b>, до ${until}`
+    : v.left===0?`${esc(v.country)}: <b>сегодня последний день</b>`
+    : `${esc(v.country)}: <b>срок вышел ${-v.left} ${plDays(v.left)} назад</b>`;
+  const cls=v.left<=3?' late':v.left<=7?' soon':'';
+  return `<button class="visa${cls}" id="visaBtn" title="Срок пребывания по штампу. Нажмите, чтобы изменить после визарана">
+    <span aria-hidden="true">🛂</span><span class="vz-main">${main}
+    <span class="vz-sub">въезд ${dShort(v.entry)} · ${v.days} ${plDays(v.days)} · идёт ${v.day}-й день</span></span></button>`;
+}
+function visaSheet(){
+  const v=visaCfg();
+  openSheet(`<h2>🛂 Срок пребывания</h2>
+    <p class="small muted" style="margin-bottom:12px">После визарана поставьте новую дату въезда со штампа. День въезда считается первым.</p>
+    <label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">Страна</span><input id="vzC" value="${esc(v.country)}"></label>
+    <label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">Дата въезда</span><input type="date" id="vzE" value="${v.entry}"></label>
+    <label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">Сколько дней можно находиться</span><input type="number" id="vzD" min="1" max="3650" inputmode="numeric" value="${v.days}"></label>
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:6px">${[15,30,45,90].map(n=>`<button class="btn sm" data-vzd="${n}">${n}</button>`).join('')}</div>
+    <p class="small muted" id="vzOut" style="margin:8px 0 0"></p>
+    <div class="row" style="margin-top:14px">
+      <span class="spacer"></span><button class="btn" id="vzCancel">Отмена</button>
+      <button class="btn primary" id="vzSave">Сохранить</button></div>`);
+  const out=()=>{const e=$('#vzE').value,n=+$('#vzD').value;
+    if(!e||!(n>0)){$('#vzOut').textContent='';return}
+    const l=addD(e,n-1);$('#vzOut').textContent='Последний день: '+fmtFull(l)+'.'};
+  $('#vzE').oninput=out; $('#vzD').oninput=out; out();
+  document.querySelectorAll('[data-vzd]').forEach(b=>b.onclick=()=>{$('#vzD').value=b.dataset.vzd;out()});
+  $('#vzCancel').onclick=closeSheet;
+  $('#vzSave').onclick=()=>{
+    const e=$('#vzE').value,n=Math.round(+$('#vzD').value);
+    if(!e||!(n>0)){toast('Укажите дату въезда и число дней');return}
+    DB.visa={country:($('#vzC').value.trim()||'Вьетнам'),entry:e,days:n};
+    save();closeSheet();render();toast('Срок сохранён: до '+fmtFull(addD(e,n-1)));
+  };
+}
+
 function rDay(){
   const x=day(cur), isT=cur===today(), sc=score(cur);
   const prev=prevDayWith('supp');
@@ -1330,7 +1390,7 @@ function rDay(){
     ${isT?'':'<button class="dn-today" id="tdy" title="Вернуться к сегодняшнему дню">Сегодня</button>'}
     ${workBadge(cur)}
     <div class="dn-score" id="scv" title="Балл дня">${sc}</div>`;
-  $('#v-day').innerHTML=`
+  $('#v-day').innerHTML=(isT?visaHtml():'')+`
 
   <div class="card">
     <h2>😴 Тело и сон <span class="right" id="sleepTot">${x.sleepH!=null?fmtH(x.sleepH):''}</span></h2>
@@ -1488,6 +1548,7 @@ function prevDayWith(f){
 }
 function bindDay(){
   const x=day(cur);
+  const vb=$('#visaBtn'); if(vb) vb.onclick=visaSheet;
   $('#pv').onclick=()=>{cur=addD(cur,-1);render()};
   const n=$('#nx'); if(n)n.onclick=()=>{if(cur<today()){cur=addD(cur,1);render()}};
   const t=$('#tdy'); if(t)t.onclick=()=>{cur=today();render()};
