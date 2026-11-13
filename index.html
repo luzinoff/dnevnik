@@ -80,7 +80,7 @@ nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:50;
 .ro.out{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
 .ro.out>b{color:var(--accent);white-space:nowrap;font-size:14px}
 .row{display:flex;align-items:center;gap:9px}
-/* Срок пребывания по штампу: тонкая строка над карточками «Сегодня».
+/* Срок пребывания по штампу: строка вверху вкладки «Жизнь».
    Цвет предупреждает заранее: за неделю — акцент, в последние 3 дня и после — красный. */
 .visa{display:flex;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;color:var(--ink);
   background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:11px 15px;margin-bottom:12px;
@@ -1347,7 +1347,7 @@ function visaSheet(){
   const v=visaCfg();
   openSheet(`<h2>🛂 Срок пребывания</h2>
     <p class="small muted" style="margin-bottom:12px">После визарана поставьте новую дату въезда со штампа. День въезда считается первым.</p>
-    <label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">Страна</span><input id="vzC" value="${esc(v.country)}"></label>
+    <label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">Страна</span><input type="text" id="vzC" value="${esc(v.country)}"></label>
     <label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">Дата въезда</span><input type="date" id="vzE" value="${v.entry}"></label>
     <label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">Сколько дней можно находиться</span><input type="number" id="vzD" min="1" max="3650" inputmode="numeric" value="${v.days}"></label>
     <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:6px">${[15,30,45,90].map(n=>`<button class="btn sm" data-vzd="${n}">${n}</button>`).join('')}</div>
@@ -1390,7 +1390,7 @@ function rDay(){
     ${isT?'':'<button class="dn-today" id="tdy" title="Вернуться к сегодняшнему дню">Сегодня</button>'}
     ${workBadge(cur)}
     <div class="dn-score" id="scv" title="Балл дня">${sc}</div>`;
-  $('#v-day').innerHTML=(isT?visaHtml():'')+`
+  $('#v-day').innerHTML=`
 
   <div class="card">
     <h2>😴 Тело и сон <span class="right" id="sleepTot">${x.sleepH!=null?fmtH(x.sleepH):''}</span></h2>
@@ -1548,7 +1548,6 @@ function prevDayWith(f){
 }
 function bindDay(){
   const x=day(cur);
-  const vb=$('#visaBtn'); if(vb) vb.onclick=visaSheet;
   $('#pv').onclick=()=>{cur=addD(cur,-1);render()};
   const n=$('#nx'); if(n)n.onclick=()=>{if(cur<today()){cur=addD(cur,1);render()}};
   const t=$('#tdy'); if(t)t.onclick=()=>{cur=today();render()};
@@ -1936,7 +1935,7 @@ const lifeLevel=(v,max)=>{
 };
 const lifeMonthLabel=s=>MONS[pISO(s).getMonth()];
 function rLife(){
-  $('#v-life').innerHTML=`
+  $('#v-life').innerHTML=visaHtml()+`
   <div class="card">
     <h2>🗓 Календарь жизни <span class="right">с 2022 года</span></h2>
     <div class="small muted">Дата рождения: 23.08.1988. Каждая панель — один календарный месяц; число внутри — сумма баллов за дни этого месяца.</div>
@@ -1944,6 +1943,7 @@ function rLife(){
   </div>
   ${lifeGrid()}`;
   $('#shiftOpen').onclick=shiftCalendarSheet;
+  const vb=$('#visaBtn'); if(vb) vb.onclick=visaSheet;
   $$('.life-month[data-d]').forEach(b=>bindLifeMonth(b));
   $$('.life-yr').forEach(b=>b.onclick=()=>lifeYearSheet(b.dataset.y));
 }
