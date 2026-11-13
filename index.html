@@ -1327,10 +1327,11 @@ const EXS=[['Растяжка',''],['Кардио',''],['Подтягивани�
            ['Плавание / закаливание',''],['Загорание',''],['Прочее','']];
 
 /* ---------- Срок пребывания (виза / безвиз по штампу) ----------
-   Хранится в DB.visa и синхронизируется, как остальное. Пока его не
-   задавали, берём последний визаран: въезд во Вьетнам 27.10.2026, безвиз 45 дней.
+   Хранится только в DB.visa и синхронизируется, как остальное. Значений
+   по умолчанию в коде нет (13.11.2026): код публичный, а страна и даты
+   въезда — личные данные. Пока срок не задан, строка предлагает его указать.
    День въезда считается первым днём, последний день = въезд + дней − 1. */
-const VISA_DEF={country:'Вьетнам',entry:'2026-10-27',days:45};
+const VISA_DEF={country:'',entry:'',days:0};
 const visaCfg=()=>Object.assign({},VISA_DEF,DB.visa||{});
 const dShort=s=>{const d=pISO(s);return d.getDate()+' '+MONS[d.getMonth()]};
 const dDiff=(a,b)=>Math.round((pISO(b)-pISO(a))/864e5);
@@ -1341,11 +1342,14 @@ function visaInfo(){
 }
 function plDays(n){n=Math.abs(n);const a=n%10,b=n%100;return a===1&&b!==11?'день':a>=2&&a<=4&&(b<12||b>14)?'дня':'дней'}
 function visaHtml(){
-  const v=visaInfo(); if(!v) return '';
+  const v=visaInfo();
+  if(!v) return `<button class="visa" id="visaBtn" title="Срок пребывания по штампу">
+    <span aria-hidden="true">🛂</span><span class="vz-main">Срок пребывания не задан
+    <span class="vz-sub">Нажмите, чтобы указать дату въезда и число дней</span></span></button>`;
   const until=dShort(v.last);
-  const main=v.left>0?`${esc(v.country)}: осталось <b>${v.left} ${plDays(v.left)}</b>, до ${until}`
-    : v.left===0?`${esc(v.country)}: <b>сегодня последний день</b>`
-    : `${esc(v.country)}: <b>срок вышел ${-v.left} ${plDays(v.left)} назад</b>`;
+  const main=v.left>0?`${v.country?esc(v.country)+': ':''}осталось <b>${v.left} ${plDays(v.left)}</b>, до ${until}`
+    : v.left===0?`${v.country?esc(v.country)+': ':''}<b>сегодня последний день</b>`
+    : `${v.country?esc(v.country)+': ':''}<b>срок вышел ${-v.left} ${plDays(v.left)} назад</b>`;
   const cls=v.left<=3?' late':v.left<=7?' soon':'';
   return `<button class="visa${cls}" id="visaBtn" title="Срок пребывания по штампу. Нажмите, чтобы изменить после визарана">
     <span aria-hidden="true">🛂</span><span class="vz-main">${main}
@@ -1355,9 +1359,9 @@ function visaSheet(){
   const v=visaCfg();
   openSheet(`<h2>🛂 Срок пребывания</h2>
     <p class="small muted" style="margin-bottom:12px">После визарана поставьте новую дату въезда со штампа. День въезда считается первым.</p>
-    <label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">Страна</span><input type="text" id="vzC" value="${esc(v.country)}"></label>
-    <label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">Дата въезда</span><input type="date" id="vzE" value="${v.entry}"></label>
-    <label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">Сколько дней можно находиться</span><input type="number" id="vzD" min="1" max="3650" inputmode="numeric" value="${v.days}"></label>
+    <label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">Страна</span><input type="text" id="vzC" value="${esc(v.country)}" placeholder="например, Вьетнам"></label>
+    <label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">Дата въезда</span><input type="date" id="vzE" value="${v.entry||today()}"></label>
+    <label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">Сколько дней можно находиться</span><input type="number" id="vzD" min="1" max="3650" inputmode="numeric" value="${v.days||''}"></label>
     <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:6px">${[15,30,45,90].map(n=>`<button class="btn sm" data-vzd="${n}">${n}</button>`).join('')}</div>
     <p class="small muted" id="vzOut" style="margin:8px 0 0"></p>
     <div class="row" style="margin-top:14px">
@@ -1372,7 +1376,7 @@ function visaSheet(){
   $('#vzSave').onclick=()=>{
     const e=$('#vzE').value,n=Math.round(+$('#vzD').value);
     if(!e||!(n>0)){toast('Укажите дату въезда и число дней');return}
-    DB.visa={country:($('#vzC').value.trim()||'Вьетнам'),entry:e,days:n};
+    DB.visa={country:$('#vzC').value.trim(),entry:e,days:n};
     save();closeSheet();render();toast('Срок сохранён: до '+fmtFull(addD(e,n-1)));
   };
 }
@@ -2848,7 +2852,7 @@ const psyHash=t=>{let h=5381;for(const c of String(t))h=((h*33)^c.codePointAt(0)
 const psyGet=t=>(DB.psy||{})[psyHash(t)];
 const psyBusy={}; let psyOpen='';
 const PSY_SYS=`Ты бережный и опытный психолог (КПТ, эмоционально-фокусированная терапия, ненасильственное общение).
-Тебе дают запись из дневника эмоций мужчины 38 лет и, для контекста, его прошлые записи.
+Тебе дают запись из дневника эмоций и, для контекста, прошлые записи того же человека.
 Ответь по-русски, тепло и конкретно, без морализаторства и без диагнозов. Обращайся на «ты». Коротко, пунктами.
 **Что ты чувствуешь** — назови эмоции точными словами и что, вероятно, лежит под ними.
 **Какая потребность задета** — справедливость, безопасность, уважение, автономия и т. п.
@@ -3347,11 +3351,11 @@ function aiSettings(){
 const lifeBusy={}, lifeDraft={}, lifeErr={};
 const MON_NOM=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const AI_LIFE_SYSTEM=`Ты составляешь сжатый итог месяца для личного дневника. Пиши по-русски, телеграфным стилем, без вступлений, оценок, советов и Markdown. Строго этот формат, каждая часть с новой строки; часть, для которой в данных ничего нет, пропускай целиком:
-<где был — одной строкой без подписи и только если это видно из записей; переезды с датой в скобках, например «Россия + Вьетнам (с 24.04).»>
-Тренировки: виды и лучшие результаты, например «зал, подтягивания 20–24, отжимания 110, планка 4, бег».
+<где был — одной строкой без подписи и только если это видно из записей; переезды с датой в скобках, например «Город А + Город Б (с 12.06).»>
+Тренировки: виды и лучшие результаты, например «зал, подтягивания 10–12, отжимания 40, планка 2 мин, бег».
 Питание: коротко, что преобладало.
-Сон: разброс и среднее, например «5–9 ч; в среднем ~7,5 ч».
-Вес: разброс, например «68,6–70 кг».
+Сон: разброс и среднее, например «6–8 ч; в среднем ~7 ч».
+Вес: разброс, например «80,2–81 кг».
 Развитие: английский, книги, проекты, новые привычки — что было.
 Ключевые моменты: 3–8 главных событий месяца через запятую.
 Всего не больше 450 знаков. Используй только присланные данные, ничего не придумывай. Цифры для «Сон» и «Вес» бери из строки «Факты».`;
