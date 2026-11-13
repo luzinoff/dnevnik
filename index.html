@@ -2849,6 +2849,7 @@ function rNotes(){
     ${SR?`<button class="btn sm mic" id="nVoice" title="Новая заметка голосом">
       <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/>
       <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Голосом</button>`:''}
+    ${isEmoSec(nsec)&&list.length?'<button class="btn sm" id="nPsy" title="Разбор последней записи психологом (Gemini)">🧠 Психолог</button>':''}
     ${zhOpen?'<span class="spacer"></span><button class="btn sm ghost" id="nLock">Скрыть</button>':''}</div>
   ${list.length?`<div class="card">${list.map((item,i)=>{
     const book=nsec==='books', b=book&&(typeof item==='object'?item:{text:item,read:false});
@@ -2879,6 +2880,58 @@ function rNotes(){
   $$('.nedit').forEach(b=>b.onclick=()=>editNote(+b.dataset.i));
   $('#nAdd').onclick=()=>addNote(false);
   const nv=$('#nVoice'); if(nv) nv.onclick=()=>addNote(true);
+  const np=$('#nPsy'); if(np) np.onclick=()=>psySheet(0);
+}
+
+/* ---------- Психолог по дневнику эмоций ----------
+   Разбирает выбранную запись (по умолчанию самую новую) с учётом прошлых
+   записей раздела. Ответ можно сохранить: строка «Инсайт» уходит в начало
+   раздела «Идеи и инсайты» с датой. Запросы идут в Gemini с ключом из ⚙,
+   как остальные советы ИИ. */
+const isEmoSec=k=>/дневник эмоций/i.test(secName('notes',k)||'');
+const PSY_SYS=`Ты бережный и опытный психолог (КПТ, эмоционально-фокусированная терапия, ненасильственное общение).
+Тебе дают запись из дневника эмоций мужчины 38 лет и, для контекста, его прошлые записи.
+Ответь по-русски, тепло и конкретно, без морализаторства и без диагнозов. Обращайся на «ты».
+Структура (короткие пункты):
+**Что ты чувствуешь** — назови эмоции точными словами и что, вероятно, лежит под ними.
+**Какая потребность задета** — справедливость, безопасность, уважение, автономия и т. п.
+**Мысли-ловушки** — автоматические мысли и возможные когнитивные искажения, мягко.
+**Что можно сделать** — 2–3 конкретных шага: что сделать с телом и эмоцией сейчас и как ответить конструктивно, без нападения и без уступки себе во вред.
+**Закономерность** — только если она видна по прошлым записям, иначе пропусти этот пункт.
+Последней строкой обязательно: «Инсайт: …» — одна-две фразы от первого лица, которые стоит запомнить.`;
+let psyLast=null;
+async function psyRun(i){
+  const list=DB.notes[nsec]||[], cur=list[i];
+  const past=list.slice(i+1,i+11).map(t=>'- '+t).join('\n');
+  const prompt=`Запись для разбора:\n${cur}\n\n`+(past?`Прошлые записи (новые сверху):\n${past}`:'Прошлых записей нет.');
+  return (await aiCall(PSY_SYS,prompt,{temperature:0.6})).text;
+}
+function psySheet(i){
+  const list=DB.notes[nsec]||[]; if(!list[i]) return;
+  const head=`<h2>🧠 Психолог</h2>
+    <div class="small muted" style="margin-bottom:10px">Разбор записи${list.length>1?' с учётом прошлых':''}. Это поддержка для самоанализа, а не замена специалисту.</div>
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:10px">${list.slice(0,8).map((t,k)=>`<button class="chip${k===i?' on':''}" data-pi="${k}">${esc(String(t).slice(0,10))}</button>`).join('')}</div>`;
+  const draw=(body,actions)=>{openSheet(head+body+`<div class="row" style="margin-top:14px"><span class="spacer"></span>${actions}</div>`);
+    document.querySelectorAll('[data-pi]').forEach(b=>b.onclick=()=>psySheet(+b.dataset.pi));
+    const c=$('#psyClose'); if(c) c.onclick=closeSheet;};
+  if(psyLast&&psyLast.text===list[i]){ showPsy(i,psyLast.answer); return }
+  draw('<div class="ai-text" style="padding:10px 0">Думаю над записью… обычно 10–40 секунд.</div>','<button class="btn" id="psyClose">Закрыть</button>');
+  psyRun(i).then(a=>{psyLast={text:list[i],answer:a};showPsy(i,a)})
+    .catch(e=>draw(`<p class="small" style="color:var(--warn)">${esc(aiErr(e))}</p>`,'<button class="btn" id="psyClose">Закрыть</button>'));
+  function showPsy(i,a){
+    const ins=(/^\s*\**\s*Инсайт\s*\**\s*[:：—-]\s*\**\s*(.+)$/im.exec(a)||[])[1];
+    draw(`<div class="ai-text">${aiHtml(a)}</div>`,
+      `<button class="btn" id="psyAgain">Ещё раз</button><button class="btn" id="psyClose">Закрыть</button>`+
+      (ins?`<button class="btn primary" id="psySave">В инсайты</button>`:''));
+    $('#psyAgain').onclick=()=>{psyLast=null;psySheet(i)};
+    const sv=$('#psySave'); if(sv) sv.onclick=()=>{
+      const key=(NSEC().find(([k,n])=>/инсайт/i.test(n)&&k!=='insights')||['ideas'])[0];
+      const d=new Date(), dd=String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+'.'+d.getFullYear();
+      DB.notes[key]=DB.notes[key]||[];
+      DB.notes[key].unshift(dd+' — 🧠 '+ins.replace(/\*+/g,'').trim());
+      save(); closeSheet(); rNotes(); toast('Сохранено в «'+secName('notes',key)+'»');
+    };
+  }
 }
 
 /* Окно новой заметки. Двери в него две, и режим задаётся ими:
