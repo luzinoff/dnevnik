@@ -413,6 +413,11 @@ button:focus-visible,.dn-date:focus-within{outline:2px solid var(--accent);outli
   padding:0;font-size:16px;filter:grayscale(1);opacity:.4;transition:.15s}
 .sai.on{filter:none;opacity:1;background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
 .sai-ph{width:34px;flex:none}
+.smv{display:flex;flex-direction:column;flex:none;gap:2px}
+.smv-b{width:26px;height:16px;padding:0;border:1px solid var(--line);background:var(--surface-2);border-radius:5px;
+  font-size:8px;line-height:1;color:var(--ink-2);display:grid;place-items:center}
+.smv-b:disabled{opacity:.25;cursor:default}
+.smv-b:not(:disabled):hover{border-color:var(--ink-3);color:var(--ink)}
 .chip-ai{font-size:11px;margin-right:3px}
 .ls-ai{margin-top:12px;padding-top:12px;border-top:1px solid var(--line-soft)}
 @media(prefers-reduced-motion:reduce){.ai-wait{animation:none}}
@@ -1782,8 +1787,9 @@ function sectionsSheet(kind,after){
   const vis=()=>secs(kind).filter(([k])=>k!==HIDDEN_SEC||zhOpen);
   const draw=()=>{
     openSheet(`<h2>${title}</h2>
-      <div id="slist">${vis().map(([k,n])=>`
+      <div id="slist">${vis().map(([k,n],i,arr)=>`
         <div class="row" style="margin-bottom:8px">
+          <span class="smv"><button class="smv-b" data-k="${k}" data-d="-1" ${i===0?'disabled':''} title="Выше" aria-label="Переместить «${esc(n)}» выше">▲</button><button class="smv-b" data-k="${k}" data-d="1" ${i===arr.length-1?'disabled':''} title="Ниже" aria-label="Переместить «${esc(n)}» ниже">▼</button></span>
           ${k===HIDDEN_SEC?'<span class="sai-ph" title="Этот раздел ИИ не отправляется никогда"></span>'
             :`<button class="sai ${aiSecOn(kind,k)?'on':''}" data-k="${k}" aria-pressed="${aiSecOn(kind,k)}" title="${aiSecOn(kind,k)?'Доступен ИИ — нажмите, чтобы выключить':'Не доступен ИИ — нажмите, чтобы включить'}">🤖</button>`}
           <input type="text" class="snm" data-k="${k}" value="${esc(n)}" style="flex:1;min-width:0">
@@ -1799,6 +1805,19 @@ function sectionsSheet(kind,after){
         <button class="btn" data-close>Закрыть</button>
         <button class="btn primary" id="sok">Сохранить</button></div>`);
     $$('.sai').forEach(b=>b.onclick=()=>{ apply(); aiSecToggle(kind,b.dataset.k); draw(); });
+    /* Порядок разделов — порядок массива DB.sec[kind]: в нём же они идут
+       в ряду на вкладке. Меняем местами с соседом среди видимых, скрытый
+       «Ж» при закрытом разделе не трогаем. Применяется сразу — вкладка
+       под окном перерисовывается, «Сохранить» для этого не нужен. */
+    $$('.smv-b').forEach(b=>b.onclick=()=>{
+      apply();
+      const k=b.dataset.k, d=+b.dataset.d, vk=vis().map(s=>s[0]), j=vk.indexOf(k)+d;
+      if(j<0||j>=vk.length) return;
+      const L=secs(kind), a=L.findIndex(s=>s[0]===k), c=L.findIndex(s=>s[0]===vk[j]);
+      [L[a],L[c]]=[L[c],L[a]];
+      save(); draw(); after&&after();
+      const nb=$(`.smv-b[data-k="${k}"][data-d="${d}"]`); if(nb&&!nb.disabled) nb.focus();
+    });
     $('#sadd').onclick=()=>{
       const t=$('#snew').value.trim(); if(!t) return toast('Введите название');
       apply();
