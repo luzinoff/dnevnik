@@ -80,6 +80,14 @@ nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:50;
 .ro.out{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
 .ro.out>b{color:var(--accent);white-space:nowrap;font-size:14px}
 .row{display:flex;align-items:center;gap:9px}
+/* Дневник эмоций: отдельная кнопка под рядом разделов и разборы под записями */
+.emo-open{display:flex;align-items:center;gap:10px;width:100%;margin:10px 0 0;padding:12px 15px;font:inherit;font-weight:600;
+  text-align:left;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);cursor:pointer}
+.emo-open .n{margin-left:auto;font-weight:400;color:var(--ink-3);font-size:13px}
+.emo-open.on{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 45%,transparent);color:var(--accent)}
+.psy{margin:2px 0 6px 2px;border-left:3px solid var(--accent-soft);padding-left:10px}
+.psy summary{cursor:pointer;font-size:12.5px;color:var(--accent);padding:3px 0}
+.psy .ai-text{font-size:13.5px;padding:4px 0 2px}
 /* Срок пребывания по штампу: строка вверху вкладки «Жизнь».
    Цвет предупреждает заранее: за неделю — акцент, в последние 3 дня и после — красный. */
 .visa{display:flex;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;color:var(--ink);
@@ -2831,18 +2839,51 @@ function micPaint(){
 /* ================= ЗАМЕТКИ ================= */
 /* список разделов — NSEC_DEF и secs('notes') выше, в блоке «Цели» */
 
+/* ---------- ИИ-психолог для «Дневника эмоций» ----------
+   Раздел узнаём по названию (ключ у него случайный). Разбор хранится в
+   DB.psy по хэшу текста записи и синхронизируется, как DB.advice. Правка
+   текста записи отвязывает старый разбор — его можно сделать заново. */
+const emoSecKey=()=>(NSEC().find(([k,n])=>/дневник эмоций/i.test(n))||[])[0];
+const psyHash=t=>{let h=5381;for(const c of String(t))h=((h*33)^c.codePointAt(0))>>>0;return 'p'+h.toString(36)};
+const psyGet=t=>(DB.psy||{})[psyHash(t)];
+const psyBusy={}; let psyOpen='';
+const PSY_SYS=`Ты бережный и опытный психолог (КПТ, эмоционально-фокусированная терапия, ненасильственное общение).
+Тебе дают запись из дневника эмоций мужчины 38 лет и, для контекста, его прошлые записи.
+Ответь по-русски, тепло и конкретно, без морализаторства и без диагнозов. Обращайся на «ты». Коротко, пунктами.
+**Что ты чувствуешь** — назови эмоции точными словами и что, вероятно, лежит под ними.
+**Какая потребность задета** — справедливость, безопасность, уважение, автономия и т. п.
+**Мысли-ловушки** — автоматические мысли и возможные когнитивные искажения, мягко.
+**Что можно сделать** — 2–3 конкретных шага: что сделать с телом и эмоцией сейчас и как ответить конструктивно.
+**Закономерность** — только если она видна по прошлым записям, иначе пропусти этот пункт.`;
+async function psyRun(i){
+  const list=DB.notes[nsec]||[], text=list[i]; if(typeof text!=='string') return;
+  const h=psyHash(text); if(psyBusy[h]) return;
+  if(psyGet(text)&&!confirm('Разобрать заново? Прежний разбор заменится.')) return;
+  const past=list.slice(i+1,i+11).filter(t=>typeof t==='string').map(t=>'- '+t).join('\n');
+  psyBusy[h]=true; rNotes(); toast('Психолог думает… обычно 10–40 секунд');
+  try{
+    const r=await aiCall(PSY_SYS,`Запись для разбора:\n${text}\n\n`+(past?`Прошлые записи (новые сверху):\n${past}`:'Прошлых записей нет.'),{temperature:0.6});
+    DB.psy=DB.psy||{}; DB.psy[h]={text:r.text,at:Date.now(),model:r.model};
+    psyOpen=h; save(); toast('Разбор готов');
+  }catch(e){ toast(aiErr(e)) }
+  finally{ delete psyBusy[h]; if(tab==='notes') rNotes() }
+}
+
 function rNotes(){
   initFilters();
   DB.notes.free=DB.notes.free||[];
   if(nsec==='books') migrateBooks();
   const list=DB.notes[nsec]||[];
-  const vis=NSEC().filter(([k])=>k!==HIDDEN_SEC||zhOpen);
+  const emoKey=emoSecKey();
+  const vis=NSEC().filter(([k])=>(k!==HIDDEN_SEC||zhOpen)&&k!==emoKey);
+  const isEmo=!!emoKey&&nsec===emoKey;
   $('#v-notes').innerHTML=`
   <div class="card">
     <h2 id="nTitle" style="margin-bottom:10px;user-select:none">Заметки${zhOpen?' <span class="small" style="color:var(--accent-2);font-weight:400">· скрытое открыто</span>':''}</h2>
     <div class="chips">${vis.map(([k,n])=>
     `<button class="chip ns ${nsec===k?'on':''}" data-s="${k}">${aiSecOn('notes',k)?'<span class="chip-ai" title="Доступен ИИ">🤖</span>':''}${n} ${(DB.notes[k]||[]).length}</button>`).join('')}
     <button class="chip ns" id="nsecBtn" title="Управление разделами">⚙</button></div></div>
+    ${emoKey?`<button class="emo-open${isEmo?' on':''}" id="emoOpen">${esc(secName('notes',emoKey))}<span class="n">${(DB.notes[emoKey]||[]).length}</span></button>`:''}
     <div class="small muted" style="margin:2px 2px 0">Тап по заметке — правка и перенос, ⚙ — управление разделами</div>
     <!-- «+ Добавить» отделено от ряда разделов подсказкой: рядом с «⚙» их путали -->
     <div class="row" style="margin:11px 2px"><button class="btn sm" id="nAdd">+ Добавить заметку</button>
@@ -2856,7 +2897,9 @@ function rNotes(){
     return `<div class="row" style="align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line-soft)">
       ${book?`<button class="btn ghost bookRead${b.read?' on':''}" data-i="${i}" title="${b.read?'Отметить как непрочитанную':'Отметить как прочитанную'}" aria-label="${b.read?'Непрочитанная':'Прочитанная'}">${b.read?'✓':'○'}</button>`:''}
       <span class="nedit" data-i="${i}" style="flex:1;cursor:pointer;${book&&b.read?'color:var(--ink-3);text-decoration:line-through':''}">${hl(text)}</span>
-      <button class="btn ghost nd" data-i="${i}" title="Удалить">✕</button></div>`}).join('')}</div>`
+      ${isEmo?`<button class="btn ghost psyBtn" data-i="${i}" title="${psyGet(text)?'Разобрать заново':'Разбор ИИ-психологом'}">${psyBusy[psyHash(text)]?'…':'🧠'}</button>`:''}
+      <button class="btn ghost nd" data-i="${i}" title="Удалить">✕</button></div>
+      ${isEmo&&psyGet(text)?`<details class="psy"${psyOpen===psyHash(text)?' open':''}><summary>🧠 Разбор психолога · ${esc(new Date(psyGet(text).at).toLocaleDateString('ru',{day:'numeric',month:'short'}))}</summary><div class="ai-text">${aiHtml(psyGet(text).text)}</div></details>`:''}`}).join('')}</div>`
     :'<div class="empty">Пусто</div>'}`;
   $$('.ns').forEach(b=>b.onclick=()=>{if(b.id==='nsecBtn') sectionsSheet('notes',rNotes);else{nsec=b.dataset.s;rNotes()}});
   /* три быстрых тапа по слову «Заметки» открывают скрытый раздел */
@@ -2869,7 +2912,11 @@ function rNotes(){
   const lk=$('#nLock'); if(lk)lk.onclick=()=>{zhOpen=false;nsec='';initFilters();rNotes()};
   $$('.nd').forEach(b=>b.onclick=()=>{
     if(!confirm('Удалить?'))return;
-    DB.notes[nsec].splice(+b.dataset.i,1);save();rNotes()});
+    const gone=DB.notes[nsec].splice(+b.dataset.i,1)[0];
+    if(isEmo&&DB.psy&&typeof gone==='string') delete DB.psy[psyHash(gone)];
+    save();rNotes()});
+  const eo=$('#emoOpen'); if(eo) eo.onclick=()=>{nsec=emoKey;rNotes()};
+  $$('.psyBtn').forEach(b=>b.onclick=()=>psyRun(+b.dataset.i));
   $$('.bookRead').forEach(b=>b.onclick=e=>{
     e.stopPropagation(); const x=DB.notes.books[+b.dataset.i];
     if(typeof x==='string') DB.notes.books[+b.dataset.i]={id:uid(),text:x,read:true};
