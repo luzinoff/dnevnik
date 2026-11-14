@@ -463,6 +463,40 @@ button:focus-visible,.dn-date:focus-within{outline:2px solid var(--accent);outli
 <script>
 "use strict";
 const LS='diary.v2', LSC='diary.cfg.v2';
+/* ===== Общие настройки дневника, бюджета и медкарты (14.11.2026) =====
+   Все три приложения открываются с одного сайта (luzinoff.github.io),
+   поэтому видят одну и ту же память браузера. Client ID Google и ключ
+   с моделью Gemini держим в общей записи luz.shared.v1: ввёл в одном —
+   подхватили остальные, даже в соседней вкладке. Свои настройки у каждого
+   приложения остаются; этот блок одинаковый во всех трёх файлах.
+   aiModel: пустая строка — модель по умолчанию (gemini-3.6-flash). */
+const LUZ_SHARED='luz.shared.v1', LUZ_FIELDS=['clientId','aiKey','aiModel'];
+const luzShared={
+  seen:{},
+  get(){try{return JSON.parse(localStorage.getItem(LUZ_SHARED))||{}}catch(e){return {}}},
+  set(p){try{localStorage.setItem(LUZ_SHARED,JSON.stringify(Object.assign(this.get(),p)))}catch(e){}},
+  /* own — текущие значения приложения. Общее побеждает; поля, которых в
+     общем ещё нет, заполняем своими. Возвращает значения после слияния. */
+  pull(own){
+    const s=this.get(), out={}, seed={};
+    for(const k of LUZ_FIELDS){
+      const mine=String(own[k]||'').trim();
+      if(k in s) out[k]=String(s[k]||''); else { out[k]=mine; if(mine) seed[k]=mine }
+    }
+    if(Object.keys(seed).length) this.set(seed);
+    this.seen={...out}; return out;
+  },
+  /* после сохранения своих настроек: в общее уходит только то, что
+     поменяли здесь, — иначе вкладка со старыми значениями затёрла бы
+     свежие из соседней */
+  push(own){
+    const ch={};
+    for(const k of LUZ_FIELDS){const v=String(own[k]||'').trim(); if(v!==(this.seen[k]||'')) ch[k]=v}
+    if(Object.keys(ch).length){ this.set(ch); Object.assign(this.seen,ch) }
+  }
+};
+/* дневник держит эти настройки в CFG (clientId, aiKey, aiModel) */
+const luzDiaryOwn=()=>({clientId:CFG.clientId,aiKey:CFG.aiKey,aiModel:CFG.aiModel==='gemini-3.6-flash'?'':CFG.aiModel});
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const pad=n=>String(n).padStart(2,'0');
 const iso=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -830,6 +864,9 @@ function load(){
   }catch(e){} }
   else { seedFromFile(); }
   try{const c=localStorage.getItem(LSC); if(c) CFG=Object.assign({...DEF_CFG},JSON.parse(c));}catch(e){}
+  /* общие с бюджетом и медкартой Client ID и Gemini — общее побеждает */
+  Object.assign(CFG,luzShared.pull(luzDiaryOwn()));
+  try{localStorage.setItem(LSC,JSON.stringify(CFG))}catch(e){}
   CFG.weights=Object.assign(ACT_W(),CFG.weights||{});
   /* «Руч» — наблюдение, а не достижение: вес держим нулевым */
   ACTS.filter(a=>a.w0).forEach(a=>CFG.weights[a.k]=0);
@@ -983,7 +1020,7 @@ function save(push=true){
   try{localStorage.setItem(LS,JSON.stringify(DB))}catch(e){toast('Хранилище переполнено')}
   if(push&&CFG.autoSync&&CFG.clientId&&CFG.everSignedIn) queuePush();
 }
-function saveCfg(){try{localStorage.setItem(LSC,JSON.stringify(CFG))}catch(e){}}
+function saveCfg(){try{localStorage.setItem(LSC,JSON.stringify(CFG))}catch(e){} luzShared.push(luzDiaryOwn())}
 
 function day(d=cur){
   if(!DB.days[d]) DB.days[d]={};
@@ -3485,6 +3522,15 @@ const flushPush=()=>{
 document.addEventListener('visibilitychange',()=>{document.hidden?flushPush():syncOnReturn()});
 window.addEventListener('focus',syncOnReturn);
 window.addEventListener('pagehide',flushPush);
+/* общие настройки поменяли в бюджете или медкарте (в соседней вкладке) */
+window.addEventListener('storage',e=>{
+  if(e.key!==LUZ_SHARED) return;
+  const before=CFG.clientId;
+  Object.assign(CFG,luzShared.pull(luzDiaryOwn()));
+  if(CFG.clientId!==before){tok=null;tokExp=0}
+  try{localStorage.setItem(LSC,JSON.stringify(CFG))}catch(_){}
+  if(tab==='day'||tab==='stats') renderSafe();
+});
 window.addEventListener('beforeunload',flushPush);
 /* Кнопка 🔄 в шапке — как в медкарте: одно нажатие сразу запускает обмен.
    Не настроено (нет Client ID) или страница открыта с диска — открываем
