@@ -3142,8 +3142,9 @@ function syncSheet(){
     ${local?`<div class="small" style="color:var(--warn);margin-bottom:12px">
       Страница открыта с диска (file://). Google не разрешает вход с таких страниц —
       откройте приложение по адресу на GitHub Pages.</div>`:''}
-    <label class="fld" style="margin-bottom:12px"><span>OAuth Client ID</span>
-      <input type="text" id="ci" value="${esc(CFG.clientId)}" placeholder="123456789-xxxx.apps.googleusercontent.com"></label>
+    <div class="fld" style="margin-bottom:12px"><span>OAuth Client ID — один на дневник, бюджет и медкарту</span>
+      <div class="row" style="gap:8px;align-items:center"><code style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${CFG.clientId?esc(CFG.clientId):'не указан'}</code>
+      <button class="btn sm" id="ciSet">${CFG.clientId?'Изменить':'Указать'}</button></div></div>
     <label class="row small" style="margin-bottom:14px"><input type="checkbox" id="sa" ${CFG.autoSync?'checked':''} style="width:auto"> Синхронизировать автоматически</label>
     <div class="row" style="flex-wrap:wrap;gap:8px">
       <button class="btn sm primary" id="sNow">${conn?'Синхронизировать':'Войти и синхронизировать'}</button>
@@ -3158,25 +3159,13 @@ function syncSheet(){
       <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">
         <button class="btn sm" id="sDown">Взять облачную копию</button>
         <button class="btn sm" id="sUp">Записать в облако здешнюю</button></div></div></details>
-    <details style="margin-top:10px"><summary>Как получить Client ID</summary>
-      <div class="small" style="color:var(--ink-2);line-height:1.7;padding-top:6px">
-      1. <b>console.cloud.google.com</b> → создайте проект (любое имя).<br>
-      2. APIs &amp; Services → Library → найдите <b>Google Drive API</b> → Enable.<br>
-      3. APIs &amp; Services → OAuth consent screen → тип <b>External</b>,
-      заполните название и свою почту. В разделе <b>Audience</b> добавьте себя
-      в <b>Test users</b> — иначе вход будет отклоняться.<br>
-      4. Credentials → Create credentials → <b>OAuth client ID</b> →
-      тип <b>Web application</b>.<br>
-      &nbsp;&nbsp;&nbsp;В <b>Authorized JavaScript origins</b> добавьте адрес вашей
-      страницы без пути, например <code>https://ваш-логин.github.io</code><br>
-      5. Скопируйте Client ID сюда → «Войти и синхронизировать».<br><br>
-      Данные лежат в скрытой папке приложения на вашем Диске: среди файлов не видны,
-      доступны только этой странице. Пароль нигде не хранится.</div></details>`);
-  const grab=()=>{const c=$('#ci').value.trim(); if(c!==CFG.clientId){CFG.clientId=c;tok=null;tokExp=0}
-    CFG.autoSync=$('#sa').checked;saveCfg()};
+`);
+  /* Client ID вводится на общей странице настроек, как и ключи ИИ */
+  $('#ciSet').onclick=luzOpenSettings;
+  const grab=()=>{CFG.autoSync=$('#sa').checked;saveCfg()};
   const m=()=>$('#sMsg');
   const run=async(mode,txt)=>{grab();
-    if(!CFG.clientId) return m().textContent='Сначала вставьте Client ID.';
+    if(!CFG.clientId) return m().textContent='Сначала укажите Client ID — кнопка «Указать».';
     m().textContent=txt;
     try{
       const r=await syncNow(true,mode);
@@ -3207,7 +3196,7 @@ function hintAuth(msg){
     return 'Окно входа закрыто, вход не выполнен. Нажмите кнопку ещё раз.';
   if(s==='BUSY')
     return 'Обмен с Диском уже идёт — подождите несколько секунд и повторите.';
-  if(s==='NO_CLIENT_ID') return 'Сначала вставьте Client ID.';
+  if(s==='NO_CLIENT_ID') return 'Сначала укажите Client ID на странице настроек.';
   if(s==='FILE_PROTO') return 'Страница открыта с диска (file://) — Google не пускает такие страницы. Откройте адрес на GitHub Pages.';
   if(/origin|redirect_uri|400/i.test(s))
     return 'Google не принял адрес страницы. В Credentials → ваш OAuth client → Authorized JavaScript origins должен быть указан '+location.origin+' — ровно так, без пути в конце.';
