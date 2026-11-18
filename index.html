@@ -439,12 +439,57 @@ button:focus-visible,.dn-date:focus-within{outline:2px solid var(--accent);outli
   .dn-today{height:32px;padding:0 8px;font-size:12px}.dn-date{min-width:78px}}
 @media(max-width:379px){.top-in{gap:5px;padding-left:12px;padding-right:12px}.day-nav{gap:4px}
   .dn-date{min-width:0;padding-left:4px!important;padding-right:4px!important}.dn-today{padding:0 7px}}
+/* ===== Герой (18.11.2026) ===== */
+.hero-btn{position:relative;font-size:17px;line-height:1}
+.hero-btn .hb-l{position:absolute;right:-6px;bottom:-6px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--accent);color:#fff;font-size:10px;font-weight:700;line-height:17px;text-align:center;box-shadow:0 0 0 2px var(--surface)}
+.hero-btn.on{border-color:var(--accent);background:var(--accent-soft)}
+.hero-btn[hidden]{display:none}
+.hero-top{display:flex;align-items:center;gap:12px;user-select:none}
+.hero-ava{width:58px;height:58px;border-radius:18px;border:0;background:var(--accent-soft);display:grid;place-items:center;font-size:31px;flex:none;cursor:pointer;padding:0;-webkit-tap-highlight-color:transparent}
+.hero-id{flex:1;min-width:0}
+.hero-name{border:0;background:none;padding:0;font:inherit;color:inherit;font-weight:650;font-size:18px;cursor:pointer;text-align:left;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hero-cls{color:var(--ink-2);font-size:13px;margin-top:3px}
+.hero-lvl{text-align:center;flex:none;min-width:48px}
+.hero-lvl b{display:block;font-size:28px;line-height:1;color:var(--accent)}
+.hero-lvl span{font-size:11px;color:var(--ink-3)}
+.hero-xp{margin:13px 0 6px}
+.hero-st{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
+.hero-chip{font-size:12px;padding:4px 9px;border-radius:999px;background:var(--accent-soft);color:var(--ink)}
+.hero-chip.bad{background:#f6e3de}
+html[data-theme="dark"] .hero-chip.bad{background:#4a2c26}
+.hero-q,.hero-sk,.hero-ev{width:100%;border:0;border-bottom:1px solid var(--line-soft);background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.hero-q:last-child,.hero-sk:last-child,.hero-ev:last-child{border-bottom:0}
+.hero-q{display:flex;align-items:center;gap:10px;padding:10px 2px}
+.hero-q .qk{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--line);display:grid;place-items:center;font-size:12px;flex:none}
+.hero-q.done .qk{background:var(--accent);border-color:var(--accent);color:#fff}
+.hero-q.done .ql{color:var(--ink-3);text-decoration:line-through}
+.hero-radar{display:block;margin:0 auto 4px;width:100%;max-width:290px;height:auto}
+.hero-sk{display:grid;grid-template-columns:26px 1fr auto;gap:4px 10px;align-items:center;padding:8px 2px}
+.hero-sk .si{font-size:18px;grid-row:span 2}
+.hero-sk .sn{font-weight:600;font-size:14px}
+.hero-sk .sl{font-size:13px;color:var(--ink-2);text-align:right;white-space:nowrap}
+.hero-sk .sf{font-size:11px;color:var(--ink-3)}
+.hero-sk .bar{grid-column:2/4;height:5px}
+.hero-perks{display:grid;grid-template-columns:repeat(auto-fill,minmax(98px,1fr));gap:8px}
+.hero-perk{border:1.5px solid var(--line);border-radius:12px;padding:8px 6px;text-align:center;background:var(--surface-2)}
+.hero-perk .pi{font-size:22px;line-height:1.2}
+.hero-perk .pn{font-size:12px;font-weight:600;margin-top:2px;hyphens:auto;-webkit-hyphens:auto;overflow-wrap:anywhere;line-height:1.25}
+.hero-perk .pt{font-size:11px;color:var(--ink-3)}
+.hero-perk .bar{height:4px;margin-top:5px}
+.hero-perk.t0 .pi{filter:grayscale(1);opacity:.45}
+.hero-perk.t1{border-color:#c08a5a}.hero-perk.t2{border-color:#9aa3ad}.hero-perk.t3{border-color:#d4a72c}
+.hero-perk.t4{border-color:#8a63d2;box-shadow:inset 0 0 0 1px #8a63d2}
+.hero-ev{display:flex;gap:10px;align-items:center;padding:8px 2px;font-size:13px}
+.hero-ev .ed{color:var(--ink-3);width:70px;flex:none;font-size:12px}
+.hero-mbars{display:flex;align-items:flex-end;gap:3px;height:72px;margin:12px 0 4px}
+.hero-mbars i{flex:1;background:var(--accent);border-radius:3px 3px 0 0;min-height:2px;opacity:.85}
 </style>
 </head>
 <body>
 <header class="top"><div class="top-in">
   <div class="day-nav" id="dayNav" hidden></div>
   <div style="flex:1;min-width:0" id="ttlWrap"><h1 id="ttl">День</h1><div class="sub" id="sub"></div></div>
+  <button class="icon-btn hero-btn" id="heroBtn" hidden aria-label="Герой"></button>
   <button class="icon-btn sync-btn" id="syncBtn" title="Синхронизировать с Google Диском" aria-label="Синхронизировать с Google Диском"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/></svg><span class="sync-dot" id="syncDot"></span></button>
   <button class="icon-btn" id="themeBtn" title="Тема">◐</button>
 </div></header>
@@ -455,6 +500,7 @@ button:focus-visible,.dn-date:focus-within{outline:2px solid var(--accent);outli
   <section class="view" id="v-stats"></section>
   <section class="view" id="v-life"></section>
   <section class="view" id="v-notes"></section>
+  <section class="view" id="v-hero"></section>
 </main>
 <nav class="tabs"><div class="tabs-in" id="tabbar"></div></nav>
 <div class="modal" id="modal"><div class="scrim" data-close></div><div class="sheet" id="sheet"></div></div>
@@ -1445,16 +1491,20 @@ $('#tabbar').innerHTML=TABS.map(t=>`<button class="tab${t.id==='day'?' on':''}" 
 $('#tabbar').onclick=e=>{const b=e.target.closest('[data-tab]');if(b)go(b.dataset.tab)};
 function go(id){
   if(tab==='notes'&&id!=='notes'){zhOpen=false;zhTaps=0;if(nsec===HIDDEN_SEC){nsec='';initFilters()}}
-  tab=id;$$('.tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
+  if(tab==='hero'&&id!=='hero'){heroRom=false;heroTaps=0}
+  /* «Герой» — экран без своей вкладки, открывается кнопкой-аватаром в шапке «Жизни» */
+  tab=id;$$('.tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===(id==='hero'?'life':id)));
   $$('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+id));window.scrollTo({top:0});render()}
 function render(){
-  const T=TABS.find(t=>t.id===tab);
+  const T=TABS.find(t=>t.id===tab)||{name:'Герой'};
   /* На «Дне» вместо заголовка — переход по дням (его рисует rDay) */
   const isDay=tab==='day';
   $('#ttl').textContent=T.name; $('#sub').textContent='';
   $('#ttlWrap').hidden=isDay; $('#dayNav').hidden=!isDay; $('#themeBtn').hidden=isDay;
   if(!isDay) $('#dayNav').innerHTML='';
-  ({day:rDay,diary:rDiary,goals:rGoals,stats:rStats,life:rLife,notes:rNotes})[tab]();
+  const hb=$('#heroBtn'); hb.hidden=!(tab==='life'||tab==='hero'); hb.classList.toggle('on',tab==='hero');
+  if(tab==='life') try{heroBtnPaint(heroCalc())}catch(e){}
+  ({day:rDay,diary:rDiary,goals:rGoals,stats:rStats,life:rLife,notes:rNotes,hero:rHero})[tab]();
 }
 
 /* ================= ДЕНЬ ================= */
@@ -2203,6 +2253,331 @@ function lifeGrid(){
   return `<div class="card"><div class="small muted life-month-hint" style="margin-bottom:10px">Нажмите на месяц — откроются его итоги: их можно собрать с помощью ИИ, поправить или перейти к 1-му числу. Нажмите на год — откроются итоги года.</div>${years.join('')}</div>
     <div class="card"><div class="life-legend small muted"><span>Меньше баллов</span><i></i><i class="lm1"></i><i class="lm2"></i><i class="lm3"></i><i class="lm4"></i><span>Больше баллов</span><span style="margin-left:8px">· рамка — текущий месяц</span></div></div>`;
 }
+
+/* ================= ГЕРОЙ (18.11.2026) =================
+   RPG-персонаж, который целиком вычисляется из записей: DB.days, а если в этом
+   же браузере открывались Бюджет и Медкарта — ещё из их localStorage (сайт
+   luzinoff.github.io общий, память браузера одна; читаем только на чтение,
+   ничего туда не пишем). В базе хранится лишь DB.hero.name, поэтому герой
+   не трогает синхронизацию и не требует миграций: поменяли веса или
+   формулы — герой пересчитался за всю историю. В ИИ из героя не уходит ничего.
+
+   Уровень скилла копит опыт за всю жизнь и не падает. Форма — опыт за
+   последние 30 дней относительно «хорошего месяца» этого же скилла
+   (90-й перцентиль прошлых месяцев с первого, где скилл рос), поэтому она
+   калибруется по вам самим, а не по выдуманным нормам.
+   Романтика скрыта: открывается тремя тапами по аватару, как «Ж» в заметках,
+   и не входит ни в общий уровень, ни в класс, ни в квесты. */
+const HERO_SK=[
+ {k:'str', ic:'💪', lb:'Сила',          n:'Воин',      a:'Сильный',       src:'Дни тренировок (2 опыта) и километры из упражнений (0,3 за км, до 3 в день).'},
+ {k:'end', ic:'🦶', lb:'Выносливость',  n:'Скороход',  a:'Неутомимый',    src:'Шаги за день: от 4 000 — 0,8, от 7 000 — 1,5, от 10 000 — 2 опыта. Пульс покоя влияет на состояния героя.'},
+ {k:'rec', ic:'😴', lb:'Восстановление',n:'Сновидец',  a:'Отдохнувший',   src:'Сон 7–9,5 ч — 1,5 опыта (6–10,5 ч — 0,7), оценка браслета от 80 — +0,5, глубокий сон от 90 мин — +0,3, «Лёг» с 20:00 до 01:00 — +0,3.'},
+ {k:'int', ic:'📚', lb:'Интеллект',     n:'Книжник',   a:'Мудрый',        src:'Книги и учёба — по 1,5 опыта.'},
+ {k:'lng', ic:'🗣️', lb:'Полиглот',      n:'Толмач',    a:'Многоязычный',  src:'Duolingo — 1, AI-бот — 1,2, носитель — 2 опыта.'},
+ {k:'cha', ic:'🙋', lb:'Харизма',       n:'Бард',      a:'Обаятельный',   src:'Знакомые — 1,5, новые люди — 2, соц касание — 0,7, посты — 1.'},
+ {k:'exp', ic:'🗺️', lb:'Странник',      n:'Странник',  a:'Любопытный',    src:'Новый опыт — 1,5, новые места — 2.'},
+ {k:'spi', ic:'🔥', lb:'Дух',           n:'Аскет',     a:'Стойкий',       src:'Воля и медитация — по 1,5.'},
+ {k:'biz', ic:'🛠️', lb:'Мастер дел',    n:'Мастер',    a:'Хозяйственный', src:'Бытовуха — 1, подработка и проекты — по 1,5.'},
+ {k:'hlt', ic:'🩸', lb:'Здоровье',      n:'Целитель',  a:'Здоровый',      src:'Плитка «Здоровье» — 1,5. Из Медкарты: донация — 4, день анализов или исследования — 1,5, выполненный план и прививка — 1.'},
+ {k:'gold',ic:'💰', lb:'Казначей',      n:'Казначей',  a:'Бережливый',    src:'Из Бюджета: день, когда что-то записано, — 0,4. Отложенное «В накопления» за месяц даёт до 10 опыта: норма сбережений × 20.', ext:'bud'},
+ {k:'rom', ic:'❤️', lb:'Романтика',     n:'Сердцеед',  a:'Влюблённый',    src:'Дейтинг — 0,5, свидание — 2, секс — 1,5.', hidden:true}
+];
+const HERO_BY=Object.fromEntries(HERO_SK.map(s=>[s.k,s]));
+/* плитки с весами; счётчик больше 3 в опыт не идёт — чтобы десять отметок
+   за день не перевешивали месяц */
+const HERO_W={int:{books:1.5,study:1.5},lng:{eng_duo:1,eng_ai:1.2,eng_nat:2},
+  cha:{friends:1.5,people:2,touch:.7,post:1},exp:{exp:1.5,places:2},spi:{will:1.5,medit:1.5},
+  biz:{house:1,gig:1.5,money:1.5},hlt:{health:1.5},rom:{dapp:.5,dating:2,sexn:1.5}};
+const HERO_SKB=30, HERO_HB=120; /* база кривой: уровень n требует base·n(n−1)/2 опыта */
+const heroLvl=(xp,b)=>Math.floor((1+Math.sqrt(1+8*Math.max(0,xp)/b))/2);
+const heroNeed=(n,b)=>b*n*(n-1)/2;
+const heroCnt=(x,k)=>Math.min(3,+x[k]||0);
+const heroEng=x=>+x.eng_duo>0||+x.eng_ai>0||+x.eng_nat>0;
+function heroKm(x){
+  let s=0;
+  for(const v of Object.values(x.ex||{})){const re=/(\d+(?:[.,]\d+)?)\s*км/g;let m;while((m=re.exec(String(v))))s+=parseFloat(m[1].replace(',','.'))||0}
+  return s;
+}
+const heroMin=t=>{const m=/^(\d{1,2}):(\d{2})/.exec(t||'');return m?(+m[1])*60+(+m[2]):null};
+const heroGoodSleep=x=>{const h=+x.sleepH||0;return h>=7&&h<=9.5};
+function heroDayXP(x){
+  const o={};
+  o.str=(x.sport?2:0)+Math.min(3,heroKm(x)*.3);
+  const st=+x.steps||0;
+  o.end=st>=10000?2:st>=7000?1.5:st>=4000?.8:st/5000*.6;
+  const h=+x.sleepH||0;
+  let r=heroGoodSleep(x)?1.5:h>=6&&h<=10.5?.7:0;
+  if(+x.sleepScore>=80) r+=.5;
+  if(+x.deepMin>=90) r+=.3;
+  const b=heroMin(x.bed); if(h&&b!=null&&(b>=1200||b<=60)) r+=.3;
+  o.rec=r;
+  for(const[k,w]of Object.entries(HERO_W)){let s=0;for(const[a,m]of Object.entries(w))s+=heroCnt(x,a)*m;o[k]=(o[k]||0)+s}
+  return o;
+}
+/* Бюджет (budget.v2, раньше budget.v1) и Медкарта (medcard.data — карта
+   владельца, не членов семьи). Удалённые записи Бюджета помечены del. */
+function heroExt(){
+  const rd=k=>{try{const v=JSON.parse(localStorage.getItem(k)||'null');return v&&typeof v==='object'?v:null}catch(e){return null}};
+  const bud=rd('budget.v2')||rd('budget.v1'), med=rd('medcard.data'), T=today();
+  const ev={}, add=(d,k,v)=>{if(!isDate(d)||d>T||!(v>0))return;const e=ev[d]=ev[d]||{};e[k]=(e[k]||0)+v};
+  const info={bud:!!bud,med:!!med,donations:0,labs:0,sav20:0,budDays:0,budToday:false};
+  if(med){
+    for(const x of med.donations||[]) if(isDate(x&&x.date)&&x.date<=T){add(x.date,'hlt',4);info.donations++}
+    const ld=new Set((med.labs||[]).map(x=>x&&x.date).filter(d=>isDate(d)&&d<=T));
+    ld.forEach(d=>add(d,'hlt',1.5)); info.labs=ld.size;
+    new Set((med.imaging||[]).map(x=>x&&x.date).filter(isDate)).forEach(d=>{if(!ld.has(d))add(d,'hlt',1.5)});
+    for(const x of med.plans||[]) if(x&&x.status==='Сделано') add(x.due,'hlt',1);
+    for(const x of med.vaccinations||[]) if(x) add(x.date,'hlt',1);
+  }
+  if(bud){
+    const live=a=>(Array.isArray(a)?a:[]).filter(x=>x&&!x.del);
+    for(const[k,m]of Object.entries(bud)){
+      if(!/^\d{4}-\d{2}$/.test(k)||!m||typeof m!=='object') continue;
+      const days=new Set();
+      for(const f of ['vnd','rub','inc','topup']) live(m[f]).forEach(x=>{const d=+x.day;if(d>=1&&d<=31)days.add(d)});
+      days.forEach(d=>{const s=`${k}-${pad(d)}`;if(s<=T){add(s,'gold',.4);info.budDays++;if(s===T)info.budToday=true}});
+      /* норма сбережений — как в Бюджете: «В накопления» к доходам месяца */
+      const inc=live(m.inc).reduce((s,x)=>s+(+x.amount||0),0);
+      const sav=live(m.rub).filter(x=>x.cat==='В накопления'), ss=sav.reduce((s,x)=>s+(+x.amount||0),0);
+      if(inc>0&&ss>0){
+        const xp=Math.min(10,ss/inc*20);
+        for(const x of sav) add(`${k}-${pad(clamp(+x.day||1,1,28))}`,'gold',xp*(+x.amount||0)/ss);
+        if(ss/inc>=.2) info.sav20++;
+      }
+    }
+  }
+  return {ev,info};
+}
+/* Текущая серия (кончается сегодня или вчера) и самая длинная */
+function heroStreak(test){
+  let best=0,run=0,prev=null;
+  for(const d of sortedDays()) if(test(DB.days[d]||{})){run=prev&&addD(prev,1)===d?run+1:1;prev=d;if(run>best)best=run}
+  let cur=0,d=today();
+  if(!test(DB.days[d]||{})) d=addD(d,-1);
+  while(DB.days[d]&&test(DB.days[d])){cur++;d=addD(d,-1)}
+  return {best,cur};
+}
+function heroCalc(){
+  const {ev,info}=heroExt(), T=today();
+  const all=[...new Set([...Object.keys(DB.days),...Object.keys(ev)])].filter(d=>isDate(d)&&d<=T).sort();
+  const d30=addD(T,-29), d14=addD(T,-13), d104=addD(T,-103), curM=T.slice(0,7);
+  const S={}; HERO_SK.forEach(s=>S[s.k]={xp:0,xp30:0,xpT:0,xp14:0,prev90:0,months:{}});
+  const C={train:0,km:0,steps:0,books:0,study:0,eng:0,medit:0,will:0,places:0,people:0,goodSleep:0,rec:0,dating:0};
+  const lv={}; HERO_SK.forEach(s=>lv[s.k]=1);
+  let tot=0, hl=1; const events=[];
+  for(const d of all){
+    const x=DB.days[d]||{}, o=heroDayXP(x), e=ev[d], mk=d.slice(0,7);
+    if(e) for(const k in e) o[k]=(o[k]||0)+e[k];
+    for(const k in o){
+      const v=o[k], s=S[k]; if(!s||!(v>0)) continue;
+      s.xp+=v; s.months[mk]=(s.months[mk]||0)+v;
+      if(d>=d30) s.xp30+=v; if(d===T) s.xpT+=v;
+      if(d>=d14) s.xp14+=v; else if(d>=d104) s.prev90+=v;
+      if(k!=='rom') tot+=v;
+      const n=heroLvl(s.xp,HERO_SKB); if(n>lv[k]){lv[k]=n;events.push({d,k,n})}
+    }
+    const n=heroLvl(tot,HERO_HB); if(n>hl){hl=n;events.push({d,k:'',n})}
+    if(DB.days[d]){
+      if(Object.keys(x).length) C.rec++;
+      if(x.sport) C.train++;
+      C.km+=heroKm(x); C.steps+=+x.steps||0;
+      if(+x.books>0) C.books++; if(+x.study>0) C.study++; if(heroEng(x)) C.eng++;
+      if(+x.medit>0) C.medit++; if(+x.will>0) C.will++;
+      C.places+=+x.places||0; C.people+=+x.people||0; C.dating+=+x.dating||0;
+      if(heroGoodSleep(x)) C.goodSleep++;
+    }
+  }
+  for(const sk of HERO_SK){
+    const s=S[sk.k];
+    s.lvl=heroLvl(s.xp,HERO_SKB);
+    s.lo=heroNeed(s.lvl,HERO_SKB); s.hi=heroNeed(s.lvl+1,HERO_SKB);
+    /* все прошлые месяцы с первого, где скилл рос, включая пустые: иначе у редких
+       скиллов (донации, свидания) «хороший месяц» — любой месяц с событием */
+    const ms=[], first=Object.keys(s.months).sort()[0];
+    if(first) for(let m=first;m<curM;m=lifeMonthStart(m+'-01',1).slice(0,7)) ms.push(s.months[m]||0);
+    ms.sort((a,b)=>a-b);
+    s.ref=ms.length?ms[Math.min(ms.length-1,Math.floor(ms.length*.9))]:0;
+    const f=v=>s.ref>0?clamp(Math.round(v/s.ref*100),0,100):(v>0?100:0);
+    s.form=f(s.xp30); s.formY=f(s.xp30-s.xpT); /* formY — без сегодняшнего дня: по ней выбираются квесты */
+  }
+  Object.assign(C,info,{bestSport:heroStreak(x=>!!x.sport).best,bestMedit:heroStreak(x=>+x.medit>0).best});
+  const lvl=heroLvl(tot,HERO_HB);
+  const core=HERO_SK.filter(s=>!s.hidden&&S[s.k].xp>0).sort((a,b)=>S[b.k].form-S[a.k].form||S[b.k].xp30-S[a.k].xp30);
+  const t1=core[0], t2=core[1];
+  const cls=!t1||!S[t1.k].form?'Новичок':t2&&S[t2.k].form?`${t2.a} ${t1.n.toLowerCase()}`:t1.n;
+  return {S,C,info,tot,lvl,lo:heroNeed(lvl,HERO_HB),hi:heroNeed(lvl+1,HERO_HB),events,cls,ava:t1?t1.ic:'🧑',t1};
+}
+/* ---- состояния: баффы и дебаффы по последним дням ---- */
+function heroStatus(H){
+  const T=today(), out=[];
+  const st=[['🏋️','Серия тренировок',x=>!!x.sport],['🧘','Серия медитаций',x=>+x.medit>0],
+            ['🦉','Серия английского',heroEng],['📚','Серия чтения',x=>+x.books>0]];
+  for(const[ic,lb,t]of st){const s=heroStreak(t);if(s.cur>=3)out.push({t:`${ic} ${lb}: ${s.cur} ${plDays(s.cur)}`})}
+  const nights=[];for(let i=0;i<5&&nights.length<3;i++){const x=DB.days[addD(T,-i)];if(x&&+x.sleepH>0)nights.push(+x.sleepH)}
+  if(nights.length===3){
+    if(nights.every(h=>h>=7&&h<=9.5)) out.push({t:'😴 Выспался: три ночи 7–9 ч'});
+    else if(nights.every(h=>h<6)) out.push({t:'🥱 Усталость: три ночи меньше 6 ч',bad:true});
+  }
+  const st7=[];for(let i=0;i<7;i++){const x=DB.days[addD(T,-i)];if(x&&+x.steps>0)st7.push(+x.steps)}
+  if(st7.length>=4&&st7.reduce((a,b)=>a+b,0)/st7.length>=10000) out.push({t:'👣 Ходок: в среднем 10 000+ шагов'});
+  const avg=(a,b)=>{const v=[];for(let i=a;i<b;i++){const x=DB.days[addD(T,-i)];if(x&&+x.restHr>0)v.push(+x.restHr)}return v.length>=7?v.reduce((p,q)=>p+q,0)/v.length:null};
+  const r1=avg(0,30), r0=avg(30,90);
+  if(r1&&r0){
+    if(r0-r1>=2) out.push({t:`❤️‍🩹 Сердце крепнет: пульс покоя −${Math.round(r0-r1)}`});
+    else if(r1-r0>=3) out.push({t:`💢 Пульс покоя вырос на ${Math.round(r1-r0)}`,bad:true});
+  }
+  HERO_SK.filter(s=>!s.hidden&&H.S[s.k].xp14===0&&H.S[s.k].prev90>0).slice(0,3)
+    .forEach(s=>out.push({t:`🕸 Застой: ${s.lb.toLowerCase()} — 2 недели без роста`,bad:true}));
+  return out;
+}
+/* ---- квесты дня: по одному из трёх скиллов с самой низкой формой ---- */
+const HERO_Q={
+  str:[['Тренировка',x=>!!x.sport]],
+  end:[['8 000 шагов',x=>+x.steps>=8000]],
+  rec:[['Сон 7+ часов',x=>+x.sleepH>=7]],
+  int:[['Почитать книгу',x=>+x.books>0],['Позаниматься учёбой',x=>+x.study>0]],
+  lng:[['Английский — любой формат',heroEng],['Поговорить с носителем',x=>+x.eng_nat>0]],
+  cha:[['Соц касание',x=>+x.touch>0],['Увидеться со знакомыми',x=>+x.friends>0],['Написать пост',x=>+x.post>0]],
+  exp:[['Новый опыт',x=>+x.exp>0],['Новое место',x=>+x.places>0]],
+  spi:[['Медитация',x=>+x.medit>0],['Сделать что-то через сопротивление',x=>+x.will>0]],
+  biz:[['Бытовые дела',x=>+x.house>0],['Продвинуть проект',x=>+x.money>0]],
+  hlt:[['Позаботиться о здоровье',x=>+x.health>0]],
+  gold:[['Записать траты в Бюджет',(x,H)=>H.info.budToday]]
+};
+function heroQuests(H){
+  const T=today(), x=DB.days[T]||{};
+  let seed=0; for(const c of T) seed=(seed*31+c.charCodeAt(0))>>>0;
+  return HERO_SK.filter(s=>HERO_Q[s.k]&&!s.hidden&&(!s.ext||H.info[s.ext]))
+    .sort((a,b)=>H.S[a.k].formY-H.S[b.k].formY||H.S[a.k].xp-H.S[b.k].xp).slice(0,3)
+    .map((s,i)=>{const v=HERO_Q[s.k], q=v[(seed+i)%v.length];return {s,lb:q[0],done:!!q[1](x,H)}});
+}
+/* ---- перки: вехи за всю историю, четыре ступени ---- */
+const HERO_PERKS=[
+ ['🏋️','Железо','дней с тренировкой',C=>C.train,[50,150,365,730]],
+ ['🏃','Дорога','км в тренировках',C=>Math.round(C.km),[100,500,1000,2500]],
+ ['👣','Шагомер','млн шагов',C=>Math.floor(C.steps/1e5)/10,[1,5,10,20]],
+ ['📚','Читатель','дней с книгой',C=>C.books,[50,150,365,730]],
+ ['🎓','Ученик','дней учёбы',C=>C.study,[20,60,150,300]],
+ ['🦉','Полиглот','дней с английским',C=>C.eng,[30,100,365,730]],
+ ['🧘','Тишина','медитаций',C=>C.medit,[30,100,300,700]],
+ ['🔥','Воля','дней через сопротивление',C=>C.will,[30,100,300,700]],
+ ['🗺️','Первооткрыватель','новых мест',C=>C.places,[10,30,75,150]],
+ ['🙋','Новые лица','новых людей',C=>C.people,[10,30,75,150]],
+ ['😴','Режим','ночей по 7–9 ч',C=>C.goodSleep,[100,300,600,1000]],
+ ['⛓️','Непрерывность','дней — лучшая серия тренировок',C=>C.bestSport,[7,14,30,60]],
+ ['🌊','Поток','дней — лучшая серия медитаций',C=>C.bestMedit,[7,21,60,100]],
+ ['📖','Летописец','дней с записью',C=>C.rec,[365,730,1095,1460]],
+ ['🩸','Донор','донаций',C=>C.donations,[10,20,40,60],'med'],
+ ['🔬','Чекап','дней со сданными анализами',C=>C.labs,[5,15,30,60],'med'],
+ ['🐷','Копилка','месяцев с нормой сбережений от 20%',C=>C.sav20,[1,3,6,12],'bud'],
+ ['🧾','Бухгалтер','дней учёта в Бюджете',C=>C.budDays,[30,100,200,365],'bud'],
+ ['💐','Сердцеед','свиданий',C=>C.dating,[5,15,30,60],'rom']
+];
+const HERO_TIER=['не открыт','бронза','серебро','золото','легенда'];
+const heroNum=v=>Number(v).toLocaleString('ru');
+
+var heroRom=false, heroTaps=0, heroT=null; /* var: go() может сработать раньше, чем дошёл бы let */
+function heroBtnPaint(H){
+  const b=$('#heroBtn'); if(!b) return;
+  b.innerHTML=`<span aria-hidden="true">${H.ava}</span><b class="hb-l">${H.lvl}</b>`;
+  b.title=`Герой: ${H.cls}, ${H.lvl}-й уровень`;
+}
+function heroRadar(H,list){
+  const n=list.length; if(n<3) return '';
+  const R=92, c=130, pt=(i,r)=>{const a=-Math.PI/2+2*Math.PI*i/n;return[c+r*Math.cos(a),c+r*Math.sin(a)]};
+  const ring=f=>list.map((_,i)=>pt(i,R*f).map(v=>v.toFixed(1)).join(',')).join(' ');
+  const poly=list.map((s,i)=>pt(i,R*Math.max(.04,H.S[s.k].form/100)).map(v=>v.toFixed(1)).join(',')).join(' ');
+  return `<svg class="hero-radar" viewBox="0 0 260 260" role="img" aria-label="Форма скиллов за 30 дней">
+    ${[.25,.5,.75,1].map(f=>`<polygon points="${ring(f)}" fill="none" stroke="var(--line)" stroke-width="1"/>`).join('')}
+    ${list.map((_,i)=>{const[x,y]=pt(i,R);return `<line x1="${c}" y1="${c}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--line-soft)"/>`}).join('')}
+    <polygon points="${poly}" fill="var(--accent)" fill-opacity=".22" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+    ${list.map((s,i)=>{const[x,y]=pt(i,R+20);return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-size="16">${s.ic}</text>`}).join('')}
+  </svg>`;
+}
+function rHero(){
+  const H=heroCalc(), S=H.S;
+  heroBtnPaint(H);
+  $('#sub').textContent=`${H.lvl}-й уровень · ${H.cls}`;
+  const vis=HERO_SK.filter(s=>(!s.hidden||heroRom)&&(!s.ext||H.info[s.ext]||S[s.k].xp>0));
+  const name=(DB.hero&&DB.hero.name)||'Герой';
+  const pct=H.hi>H.lo?clamp((H.tot-H.lo)/(H.hi-H.lo)*100,0,100):0;
+  const sts=heroStatus(H), qs=heroQuests(H);
+  const perks=HERO_PERKS.filter(p=>!p[5]||(p[5]==='rom'?heroRom:H.info[p[5]])).map(([ic,lb,unit,f,thr])=>{
+    const v=f(H.C), t=thr.filter(x=>v>=x).length, nx=thr[t];
+    return `<div class="hero-perk t${t}" title="${esc(lb)}: ${heroNum(v)} ${esc(unit)}">
+      <div class="pi">${ic}</div><div class="pn">${esc(lb)}</div><div class="pt">${HERO_TIER[t]}</div>
+      <div class="pt">${nx?`${heroNum(v)} / ${heroNum(nx)}`:heroNum(v)}</div>
+      ${nx?`<div class="bar"><i style="width:${clamp(v/nx*100,0,100)}%"></i></div>`:''}</div>`;
+  }).join('');
+  const evs=H.events.filter(e=>e.k!=='rom'||heroRom).slice(-25).reverse().map(e=>{
+    const s=HERO_BY[e.k], d=pISO(e.d);
+    return `<button class="hero-ev" data-m="${e.d.slice(0,7)}-01"><span class="ed">${MONS[d.getMonth()]} ${d.getFullYear()}</span>
+      <span>${s?`${s.ic} ${esc(s.lb)} — ${e.n}-й уровень`:`⭐ <b>Герой — ${e.n}-й уровень</b>`}</span></button>`;
+  }).join('');
+  const src=[H.info.bud?'Бюджет подключён':'Бюджет: в этом браузере нет данных',
+             H.info.med?'Медкарта подключена':'Медкарта: в этом браузере нет данных'];
+  $('#v-hero').innerHTML=`
+  <div class="card hero-card">
+    <div class="hero-top">
+      <button class="hero-ava" id="heroAva" title="Аватар — по самому сильному скиллу">${H.ava}</button>
+      <div class="hero-id"><button class="hero-name" id="heroName" title="Переименовать">${esc(name)} <span class="muted">✎</span></button>
+        <div class="hero-cls">${esc(H.cls)}${heroRom?' · <span style="color:var(--accent-2)">скрытое открыто</span>':''}</div></div>
+      <div class="hero-lvl"><b>${H.lvl}</b><span>уровень</span></div>
+    </div>
+    <div class="bar hero-xp"><i style="width:${pct}%"></i></div>
+    <div class="small muted">${heroNum(Math.round(H.tot-H.lo))} / ${heroNum(Math.round(H.hi-H.lo))} опыта до ${H.lvl+1}-го уровня · всего ${heroNum(Math.round(H.tot))}</div>
+    ${sts.length?`<div class="hero-st">${sts.map(s=>`<span class="hero-chip${s.bad?' bad':''}">${esc(s.t)}</span>`).join('')}</div>`:''}
+    ${heroRom?'<div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn sm ghost" id="heroLock">Скрыть</button></div>':''}
+  </div>
+  <div class="card">
+    <h2>⚔️ Квесты дня <span class="right">${qs.filter(q=>q.done).length} из ${qs.length}</span></h2>
+    <div class="small muted" style="margin-bottom:4px">Из скиллов с самой низкой формой. Отмечаются сами, когда вы ставите плитку на «Дне»; нажмите, чтобы перейти к сегодняшнему дню.</div>
+    ${qs.map(q=>`<button class="hero-q${q.done?' done':''}" data-q><span class="qk">${q.done?'✓':''}</span><span class="ql">${q.s.ic} ${esc(q.lb)}</span></button>`).join('')||'<div class="small muted">Квестов нет — данных пока мало.</div>'}
+  </div>
+  <div class="card">
+    <h2>📊 Скиллы <span class="right">форма за 30 дней</span></h2>
+    ${heroRadar(H,vis)}
+    ${vis.map(s=>{const x=S[s.k], p=x.hi>x.lo?clamp((x.xp-x.lo)/(x.hi-x.lo)*100,0,100):0;
+      return `<button class="hero-sk" data-sk="${s.k}"><span class="si">${s.ic}</span><span class="sn">${esc(s.lb)}</span>
+        <span class="sl">${x.lvl}-й ур. · <span class="sf">форма ${x.form}%</span></span><span class="bar"><i style="width:${p}%"></i></span></button>`}).join('')}
+  </div>
+  <div class="card"><h2>🏅 Перки</h2><div class="hero-perks">${perks}</div></div>
+  <div class="card"><h2>📜 Летопись</h2>
+    <div class="small muted" style="margin-bottom:4px">Последние повышения уровня. Нажмите — откроется месяц в календаре жизни.</div>
+    ${evs||'<div class="small muted">Пока пусто.</div>'}</div>
+  <div class="small muted" style="text-align:center;margin:4px 0 14px">${src.join(' · ')}</div>`;
+  $('#heroName').onclick=heroRename;
+  $('#heroAva').onclick=()=>{
+    if(heroRom) return;
+    heroTaps++; clearTimeout(heroT); heroT=setTimeout(()=>heroTaps=0,700);
+    if(heroTaps>=3){heroTaps=0;heroRom=true;rHero()}
+  };
+  const lk=$('#heroLock'); if(lk) lk.onclick=()=>{heroRom=false;rHero()};
+  $$('#v-hero [data-q]').forEach(b=>b.onclick=()=>{cur=today();go('day')});
+  $$('#v-hero [data-sk]').forEach(b=>b.onclick=()=>heroSkillSheet(H,b.dataset.sk));
+  $$('#v-hero [data-m]').forEach(b=>b.onclick=()=>lifeMonthSheet(b.dataset.m));
+}
+function heroSkillSheet(H,k){
+  const s=HERO_BY[k], x=H.S[k], T=today();
+  const ms=[]; for(let i=11;i>=0;i--){const d=pISO(T.slice(0,7)+'-01');d.setMonth(d.getMonth()-i);ms.push(iso(d).slice(0,7))}
+  const mx=Math.max(1,...ms.map(m=>x.months[m]||0));
+  openSheet(`<h2>${s.ic} ${esc(s.lb)}</h2>
+    <div class="small" style="color:var(--ink-2);line-height:1.6;margin-bottom:10px">${esc(s.src)}</div>
+    <div class="small"><b>${x.lvl}-й уровень</b> · ${heroNum(Math.round(x.xp))} опыта, до следующего ${heroNum(Math.ceil(x.hi-x.xp))}</div>
+    <div class="small" style="margin-top:4px">Форма <b>${x.form}%</b>: ${heroNum(Math.round(x.xp30*10)/10)} опыта за 30 дней при «хорошем месяце» ${heroNum(Math.round(x.ref*10)/10)} (90-й перцентиль прошлых месяцев, пустые тоже считаются)</div>
+    <div class="hero-mbars">${ms.map(m=>`<i style="height:${Math.round((x.months[m]||0)/mx*100)}%" title="${m}: ${Math.round((x.months[m]||0)*10)/10}"></i>`).join('')}</div>
+    <div class="small muted" style="display:flex;justify-content:space-between"><span>${MONS[+ms[0].slice(5)-1]}</span><span>опыт по месяцам</span><span>${MONS[+ms[11].slice(5)-1]}</span></div>
+    <div class="row" style="margin-top:14px"><span class="spacer"></span><button class="btn primary" data-close>Закрыть</button></div>`);
+}
+function heroRename(){
+  const old=(DB.hero&&DB.hero.name)||'';
+  openSheet(`<h2>Имя героя</h2>
+    <input type="text" id="heroNm" maxlength="40" value="${esc(old)}" placeholder="Герой">
+    <div class="row" style="margin-top:14px"><span class="spacer"></span><button class="btn" data-close>Отмена</button>
+    <button class="btn primary" id="heroNmOk">Сохранить</button></div>`);
+  $('#heroNmOk').onclick=()=>{DB.hero=Object.assign({},DB.hero,{name:$('#heroNm').value.trim()});save();closeSheet();rHero()};
+}
+$('#heroBtn').onclick=()=>go(tab==='hero'?'life':'hero');
 
 /* ================= СТАТИСТИКА (без графиков) ================= */
 function rStats(){
