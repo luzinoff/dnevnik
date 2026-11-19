@@ -2714,10 +2714,12 @@ function rStats(){
       <button class="btn sm" id="imB">Импорт браслета</button>
       <button class="btn sm" id="bsB">Браслет с сервера</button>
       <button class="btn sm" id="cfg">Синхронизация</button>
+      <button class="btn sm" id="pwaB" hidden>📲 Установить</button>
     </div>
     <div class="small muted" style="margin-top:9px">Графики добавим отдельно, на основе этих данных.</div>
   </div>`;
   $('#exJ').onclick=()=>dl('dnevnik-'+today()+'.json',JSON.stringify(DB),'application/json');
+  $('#pwaB').onclick=()=>pwaInstall(); pwaPaint();
   aiMount('p');
   $('#imJ').onclick=importJSON;
   $('#imB').onclick=importBand;
@@ -4061,6 +4063,39 @@ $('#syncBtn').addEventListener('click',async()=>{
       : r.sent?'Синхронизировано: правки отправлены на Диск' : 'Синхронизировано, изменений нет');
   }catch(e){ toast(hintAuth(e.message)) }
 });
+/* ---- установка как приложение (PWA) ----
+   Манифест, иконки и sw.js лежат рядом с index.html на GitHub Pages.
+   Подключаем их только по http(s): с диска (file://) браузер манифест
+   не читает и service worker не регистрирует, а в консоли были бы ошибки.
+   sw.js отдаёт страницу «сначала сеть», без сети — последнюю копию. */
+var pwaPrompt=null; /* var и function: rStats() может позвать pwaPaint() раньше, чем дошёл бы let */
+function pwaStandalone(){return matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}
+function pwaIOS(){return /iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)}
+if(/^https?:$/.test(location.protocol)){
+  /* на сайте есть настоящий файл иконки без скруглений (iOS скругляет сам) —
+     нарисованную makeIcon() для iOS снимаем, чтобы не было двух */
+  document.querySelectorAll('link[rel="apple-touch-icon"][data-gen]').forEach(l=>l.remove());
+  for(const [rel,href] of [['manifest','manifest.webmanifest'],['apple-touch-icon','apple-touch-icon.png']]){
+    const l=document.createElement('link'); l.rel=rel; l.href=href; document.head.appendChild(l);
+  }
+  if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault(); pwaPrompt=e; if(tab==='stats') pwaPaint()});
+window.addEventListener('appinstalled',()=>{pwaPrompt=null; pwaPaint(); toast('Дневник установлен')});
+/* кнопка в «Статистике → Данные»: видна, когда браузер готов установить
+   (Chrome, Edge) или на iPhone вне установленного режима — там только подсказка */
+function pwaPaint(){
+  const b=$('#pwaB'); if(!b) return;
+  b.hidden=pwaStandalone()||!(pwaPrompt||(pwaIOS()&&/^https?:$/.test(location.protocol)));
+}
+async function pwaInstall(){
+  if(pwaPrompt){ const p=pwaPrompt; pwaPrompt=null; p.prompt(); await p.userChoice.catch(()=>{}); pwaPaint(); return }
+  openSheet(`<h2>📲 Установить на iPhone</h2>
+    <div class="small" style="line-height:1.6">Откройте дневник в Safari, нажмите «Поделиться» (квадрат со стрелкой вверх)
+      и выберите «На экран „Домой“». Дневник появится иконкой и будет открываться без адресной строки,
+      в том числе без интернета.</div>
+    <div class="row" style="margin-top:14px"><span class="spacer"></span><button class="btn primary" data-close>Понятно</button></div>`);
+}
 </script>
 </body>
 </html>
