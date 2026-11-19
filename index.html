@@ -277,7 +277,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .shift-days i.work{background:color-mix(in srgb,var(--accent) 30%,var(--surface-2));color:var(--ink)}
 .shift-days i.off{background:color-mix(in srgb,var(--line) 45%,var(--surface-2))}
 .shift-days i.manual{outline:1.5px solid var(--accent-2);outline-offset:-1px}
-.shift-days i.today{box-shadow:inset 0 0 0 1.5px var(--accent-2)}
+/* Сегодня — жирное число и точка под ним, а не рамка: рамкой отмечены ручные
+   дни (подработки), и сегодняшний день путался с ними (19.11.2026). */
+.shift-days i{position:relative}
+.shift-days i.today{font-weight:800;color:var(--ink)}
+.shift-days i.today::after{content:'';position:absolute;left:50%;bottom:1px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--ink)}
 .shift-legend{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px}
 .shift-legend i{width:14px;height:14px;border-radius:3px;border:1px solid var(--line-soft)}
 .shift-legend i.work{background:color-mix(in srgb,var(--accent) 30%,var(--surface-2))}
@@ -2270,7 +2274,7 @@ function shiftCalendarHtml(year){
     months.push(`<div class="shift-month"><h4>${MON_NOM[m]}</h4><div class="shift-days"><i class="head">пн</i><i class="head">вт</i><i class="head">ср</i><i class="head">чт</i><i class="head">пт</i><i class="head">сб</i><i class="head">вс</i>${cells.join('')}</div></div>`);
   }
   return `<div class="shift-year"><div class="shift-months">${months.join('')}</div>
-    <div class="shift-legend small muted"><i class="work"></i><span>рабочие</span><i class="off"></i><span>выходные</span><i style="outline:1.5px solid var(--accent-2);outline-offset:-1px"></i><span>ручная отметка</span></div></div>`;
+    <div class="shift-legend small muted"><i class="work"></i><span>рабочие</span><i class="off"></i><span>выходные</span><i style="outline:1.5px solid var(--accent-2);outline-offset:-1px"></i><span>ручная отметка</span><b style="font-weight:800;color:var(--ink)">${+today().slice(8)}</b><span>сегодня</span></div></div>`;
 }
 function lifeSummaryText(key){
   DB.lifeSummaries=DB.lifeSummaries||{};
