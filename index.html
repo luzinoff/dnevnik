@@ -1207,15 +1207,33 @@ function migrateClean(){
   return hit;
 }
 function save(push=true){
+  tidyDays();
   DB.updated=Date.now();
   try{localStorage.setItem(LS,JSON.stringify(DB))}catch(e){toast('Хранилище переполнено')}
   if(push&&CFG.autoSync&&CFG.clientId&&CFG.everSignedIn) queuePush();
 }
 function saveCfg(){try{localStorage.setItem(LSC,JSON.stringify(CFG))}catch(e){} luzShared.push(luzDiaryOwn())}
 
+/* Пустой день в базу не кладём: раньше простой просмотр даты заводил {}
+   и пустышки уходили в облако. Незаписанный день живёт черновиком
+   и попадает в DB.days при первом save() с непустым содержимым.
+   var — день может понадобиться раньше, чем дошёл бы let. */
+var dayDraft={d:'',x:null};
 function day(d=cur){
-  if(!DB.days[d]) DB.days[d]={};
-  return DB.days[d];
+  if(DB.days[d]) return DB.days[d];
+  if(dayDraft.d!==d) dayDraft={d,x:{}};
+  return dayDraft.x;
+}
+/* перед записью: черновик с содержимым — в базу, опустевшие дни — вон
+   (опустевший текущий день остаётся черновиком, чтобы ссылки на него
+   в открытом экране продолжали работать) */
+function tidyDays(){
+  const {d,x}=dayDraft;
+  if(d&&x&&Object.keys(x).length){ if(!DB.days[d]) DB.days[d]=x; dayDraft={d:'',x:null} }
+  for(const k in DB.days){
+    const v=DB.days[k];
+    if(v&&typeof v==='object'&&!Object.keys(v).length){delete DB.days[k]; if(k===d||k===cur) dayDraft={d:k,x:v}}
+  }
 }
 const sortedDays=()=>Object.keys(DB.days).sort();
 
@@ -3120,17 +3138,47 @@ function importJSON(){
     const r=new FileReader();
     r.onload=()=>{try{
       const j=JSON.parse(r.result);
-      if(!j.days)throw new Error('не тот формат');
-      if(!confirm('Заменить текущие данные данными из файла?'))return;
-      DB=Object.assign(BLANK(),j);
-      DB.lifeBirth=LIFE_BIRTH;
-      if(DB.suppV!==SUPP_V) migrateSupps();
-      migrateSleepTZ(); migrateBooks();
-      migrateActs(); migrateGoals(); migrateZh(); migrateSections(); migrateClean(); initFilters();
-      save();render();toast('Импортировано');
+      if(!j||!j.days)throw new Error('не тот формат');
+      importSheet(f.name,j);
     }catch(e){toast('Ошибка: '+e.message)}};
     r.readAsText(f)};
   i.click();
+}
+/* Прежде импорт молча заменял базу целиком, и следующий обмен с Диском
+   принимал всё, чего нет в файле, за удалённое здесь: старая выгрузка
+   стирала из облака всё внесённое после неё. Теперь по умолчанию —
+   объединение (ничего не удаляется, при расхождении остаётся здешнее),
+   а замена сначала сохраняет текущую базу файлом. */
+function importSheet(name,j){
+  const nDays=o=>Object.keys(o.days||{}).length;
+  const last=o=>Object.keys(o.days||{}).sort().pop()||'—';
+  openSheet(`<h2>Импорт JSON</h2>
+    <div class="small muted" style="margin-bottom:12px">Файл <b>${esc(name)}</b>: ${nDays(j)} дн., последний ${esc(last(j))}.<br>
+      Сейчас здесь: ${nDays(DB)} дн., последний ${esc(last(DB))}.</div>
+    <div class="small" style="margin-bottom:8px"><b>Объединить</b> — добавить из файла то, чего здесь нет. Ничего не удаляется; где файл и здешние данные расходятся, остаётся здешнее.</div>
+    <div class="small" style="margin-bottom:14px"><b>Заменить</b> — оставить только содержимое файла. Всё, чего в нём нет, удалится и здесь, и на Google Диске при синхронизации. Текущие данные перед этим сохранятся файлом.</div>
+    <div class="row">
+      <button class="btn sm" id="imRep">Заменить</button>
+      <span class="spacer"></span>
+      <button class="btn sm" data-close>Отмена</button>
+      <button class="btn primary" id="imMrg">Объединить</button></div>`);
+  /* черновик дня мог остаться от прежней базы — в новую он попасть не должен */
+  const done=msg=>{dayDraft={d:'',x:null};initFilters();save();closeSheet();render();toast(msg)};
+  $('#imMrg').onclick=()=>{
+    const before=nDays(DB), inc=normalize(j);
+    tidyDays();
+    const m=merge3(undefined,DB,inc,true);
+    m.updated=DB.updated;
+    DB=Object.assign(BLANK(),m);
+    done(`Объединено: добавлено дней ${nDays(DB)-before}`);
+  };
+  $('#imRep').onclick=()=>{
+    if(!confirm(`Заменить данные содержимым файла? Дней сейчас ${nDays(DB)}, в файле ${nDays(j)}.`))return;
+    tidyDays();
+    dl('dnevnik-'+today()+'-до-импорта.json',JSON.stringify(DB),'application/json');
+    DB=normalize(j);
+    done('Заменено. Прежние данные сохранены файлом');
+  };
 }
 function syncSheet(){
   const local=location.protocol==='file:';
