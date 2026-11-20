@@ -1850,16 +1850,24 @@ function bindDay(){
   });
   ['pointerup','pointerleave','pointercancel'].forEach(ev=>wb.addEventListener(ev,()=>clearTimeout(wT)));
   $('#sq').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;
-    const v=+b.dataset.v; x.slept=x.slept===v?0:v; save(); rDay()};
-  $('#wt').onchange=e=>{x.weight=+e.target.value||undefined;save()};
-  $('#stp').onchange=e=>{x.steps=+e.target.value||undefined;save()};
+    const v=+b.dataset.v; if(x.slept===v) delete x.slept; else x.slept=v; save(); rDay()};
+  /* пустое поле — ключ удаляем, а не пишем undefined: иначе стёртый день
+     не считается пустым и остаётся в базе */
+  const setNum=(k,v)=>{const n=+v; if(n>0) x[k]=n; else delete x[k]; save()};
+  $('#wt').onchange=e=>setNum('weight',e.target.value);
+  $('#stp').onchange=e=>setNum('steps',e.target.value);
   /* Точечно обновляем итог, без rDay(): на десктопе стрелки в поле времени
      шлют change на каждый шаг, и полная перерисовка выбивала бы фокус. */
   const sleepIn=()=>{
-    x.bed=$('#bd').value||undefined; x.rise=$('#rs').value||undefined;
+    const bd=$('#bd').value, rs=$('#rs').value;
+    if(bd) x.bed=bd; else delete x.bed;
+    if(rs) x.rise=rs; else delete x.rise;
     const h=hoursBetween(x.bed,x.rise);
-    if(h!=null) x.sleepH=h; else delete x.sleepH;   // пара распалась — итог не оставляем
-    const txt=x.sleepH!=null?fmtH(x.sleepH):'—';
+    /* больше 16 ч подряд — почти наверняка перепутано время (лёг 01:30,
+       встал 01:00 давало 23,5 ч и портило средние); итог не пишем */
+    const odd=h!=null&&h>16;
+    if(h!=null&&!odd) x.sleepH=h; else delete x.sleepH;   // пара распалась — итог не оставляем
+    const txt=odd?'проверьте время':x.sleepH!=null?fmtH(x.sleepH):'—';
     $('#shOut').textContent=txt;
     $('#sleepTot').textContent=x.sleepH!=null?txt:'';
     save();
@@ -3485,6 +3493,8 @@ const PSY_SYS=`Ты бережный и опытный психолог (КПТ,
 **Что можно сделать** — 2–3 конкретных шага: что сделать с телом и эмоцией сейчас и как ответить конструктивно.
 **Закономерность** — только если она видна по прошлым записям, иначе пропусти этот пункт.`;
 async function psyRun(i){
+  /* психолог разбирает только «Дневник эмоций»; скрытый «Ж» наружу не уходит никогда */
+  if(nsec===HIDDEN_SEC||nsec!==emoSecKey()) return;
   const list=DB.notes[nsec]||[], text=list[i]; if(typeof text!=='string') return;
   const h=psyHash(text); if(psyBusy[h]) return;
   if(psyGet(text)&&!confirm('Разобрать заново? Прежний разбор заменится.')) return;
