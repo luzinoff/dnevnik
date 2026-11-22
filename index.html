@@ -411,6 +411,7 @@ button:focus-visible,.dn-date:focus-within{outline:2px solid var(--accent);outli
 .ai-text .ai-li{position:relative;padding-left:15px;margin:3px 0}
 .ai-text .ai-li::before{content:'';position:absolute;left:3px;top:.62em;width:5px;height:5px;border-radius:50%;background:var(--accent)}
 .ai-text .ai-gap{height:8px}
+.ai-tips{border-color:color-mix(in srgb,var(--accent) 40%,var(--line));background:color-mix(in srgb,var(--accent) 6%,var(--surface))}
 .ai-wait{animation:pulse 1.2s infinite}
 .ai-err{color:var(--warn);margin-bottom:8px;line-height:1.5}
 .sai{width:34px;height:34px;flex:none;border-radius:9px;border:1px solid var(--line);background:var(--surface-2);
@@ -4158,9 +4159,43 @@ function aiBody(kind,anchor){
     </div>`;
 }
 /* Карточка в DOM; kind 'd' — на «Дне», 'p' — разбор периода в «Статистике» */
+/* «Советы на завтра» из разбора дня D показываем и на дне D+1 — вверху
+   «Дня», чтобы утром они были перед глазами. Отдельно не храним: каждый раз
+   вырезаем раздел из DB.advice['d:D'], поэтому обновлённый или удалённый
+   разбор сразу меняет и эту карточку. Раздел — от строки с заголовком
+   «Советы на завтра» до следующего заголовка **…** или конца ответа. */
+function aiTomorrowTips(text){
+  const L=String(text||'').split('\n'); let on=false; const out=[];
+  for(const raw of L){
+    const l=raw.trim(), head=/^(\*\*|#{1,4}\s*)/.test(l);
+    if(!on){
+      if(head&&/советы\s+на\s+завтра/i.test(l)){
+        on=true;
+        /* пункт мог прийти в той же строке: «**Советы на завтра** — сделать …» */
+        const rest=l.replace(/^#{1,4}\s*/,'').replace(/^\*\*[^*]*\*\*\s*[:—–-]?\s*/,'').trim();
+        if(rest&&!/советы\s+на\s+завтра/i.test(rest)) out.push(rest);
+      }
+      continue;
+    }
+    if(head) break;
+    out.push(raw);
+  }
+  const t=out.join('\n').trim();
+  return t||'';
+}
+function aiTipsCard(d){
+  const prev=addD(d,-1), a=(DB.advice||{})['d:'+prev];
+  const tips=a&&aiTomorrowTips(a.text);
+  if(!tips) return '';
+  return `<div class="card ai-card ai-tips" id="aiTips">
+    <h2>📌 Советы на ${d===today()?'сегодня':'этот день'}</h2>
+    <div class="small muted" style="margin:-4px 0 8px">Из разбора за ${esc(fmtD(prev))}</div>
+    <div class="ai-text">${aiHtml(tips)}</div></div>`;
+}
 function aiMount(where){
   if(where==='d'){
     const host=$('#v-day'); if(!host) return;
+    const tips=aiTipsCard(cur); if(tips) host.insertAdjacentHTML('afterbegin',tips);
     host.insertAdjacentHTML('beforeend',`<div class="card ai-card" id="aiCard-d">
       <h2>🤖 Совет на день <button class="btn ghost sm right ai-set" title="Настройки ИИ" aria-label="Настройки ИИ">⚙</button></h2>
       <div class="ai-in">${aiBody('d',cur)}</div></div>`);
