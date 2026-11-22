@@ -500,7 +500,9 @@ a.btn{text-decoration:none;color:inherit;display:inline-flex;align-items:center}
 .pf-yr:first-child{margin-top:4px}
 .pf-bk{display:flex;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line-soft)}
 .pf-bk:first-of-type{border-top:0}
-.pf-bk .t{flex:1;cursor:pointer;font-size:14px}
+.pf-bk .t{flex:1;cursor:pointer;font-size:14px;min-width:0}
+.pf-bk .bt{display:block;font-weight:600;line-height:1.35}
+.pf-bk .ba{display:block;font-size:12.5px;color:var(--ink-3);margin-top:1px}
 @media (max-width:400px){.pf-sum{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
@@ -2845,13 +2847,14 @@ function rPort(){
       <button class="${pfBooks==='read'?'on':''}" data-bk="read">Прочитано ${read.length}</button>
       <button class="${pfBooks==='want'?'on':''}" data-bk="want">Хочу прочитать ${want.length}</button>
     </div>
-    <div class="row" style="gap:8px;margin-bottom:6px">
-      <input type="text" id="pfBkIn" placeholder="${pfBooks==='read'?'Прочитанная книга':'Книга в планах'} — Автор, «Название»" style="flex:1">
+    <div class="row" style="gap:8px;margin-bottom:6px;flex-wrap:wrap">
+      <input type="text" id="pfBkIn" placeholder="Название" style="flex:2 1 160px">
+      <input type="text" id="pfBkAu" placeholder="Автор" style="flex:1 1 110px">
       <button class="btn sm" id="pfBkAdd">Добавить</button>
     </div>
-    ${shown.length?shown.map(b=>`<div class="pf-bk">
+    ${shown.length?shown.map(b=>{const s=bkSplit(b.text); return `<div class="pf-bk">
       <button class="btn ghost bookRead${b.read?' on':''}" data-bi="${b.i}" title="${b.read?'Вернуть в «Хочу прочитать»':'Прочитана'}" aria-label="${b.read?'Прочитана':'Не прочитана'}">${b.read?'✓':'○'}</button>
-      <span class="t" data-be="${b.i}">${hl(b.text)}</span></div>`).join('')
+      <span class="t" data-be="${b.i}"><span class="bt">${esc(s.title)}</span>${s.author?`<span class="ba">${esc(s.author)}</span>`:''}</span></div>`}).join('')
       :`<div class="empty">${pfBooks==='read'?'Отметьте книгу галочкой, когда дочитаете':'Список пуст'}</div>`}
   </div>`;
   $('#pfAdd').onclick=()=>pfEdit(null);
@@ -2862,28 +2865,37 @@ function rPort(){
     el.onclick=open; el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open(e)}};
   });
   $$('#v-port [data-bk]').forEach(b=>b.onclick=()=>{pfBooks=b.dataset.bk;rPort()});
-  const addBook=()=>{const t=$('#pfBkIn').value.trim(); if(!t) return;
+  const addBook=()=>{const t=bkJoin($('#pfBkIn').value,$('#pfBkAu').value); if(!t) return toast('Укажите название');
     DB.notes.books=DB.notes.books||[]; DB.notes.books.unshift({id:uid(),text:t,read:pfBooks==='read'});
     save(); rPort(); toast('Книга добавлена')};
   $('#pfBkAdd').onclick=addBook;
-  $('#pfBkIn').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addBook()}};
+  $$('#pfBkIn,#pfBkAu').forEach(el=>el.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addBook()}});
   $$('#v-port [data-bi]').forEach(b=>b.onclick=()=>{
     const x=DB.notes.books[+b.dataset.bi]; if(!x) return;
     if(typeof x==='string') DB.notes.books[+b.dataset.bi]={id:uid(),text:x,read:true}; else x.read=!x.read;
     save(); rPort(); toast(x.read===false?'Вернул в «Хочу прочитать»':'Отмечено: прочитана')});
   $$('#v-port [data-be]').forEach(s=>s.onclick=()=>pfBookEdit(+s.dataset.be));
 }
+/* Книга хранится одной строкой «Название — Автор» (её же читают ИИ и
+   переносы заметок); на экране и в правке — два поля. Делим по последнему
+   « — », поэтому тире внутри названия не мешает. */
+function bkSplit(t){
+  t=String(t||'').trim(); const i=t.lastIndexOf(' — ');
+  return i>0?{title:t.slice(0,i).trim(),author:t.slice(i+3).trim()}:{title:t,author:''};
+}
+const bkJoin=(title,author)=>{title=String(title||'').trim(); author=String(author||'').trim(); return title?(author?title+' — '+author:title):''};
 function pfBookEdit(i){
   const x=DB.notes.books[i]; if(x==null) return;
-  const b=typeof x==='object'?x:{text:x,read:false};
+  const b=typeof x==='object'?x:{text:x,read:false}, s=bkSplit(b.text);
   openSheet(`<h2>Книга</h2>
-    <textarea id="pbT" style="min-height:90px">${esc(b.text)}</textarea>
+    <label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">Название</span><textarea id="pbT" style="min-height:64px">${esc(s.title)}</textarea></label>
+    <label class="bt-col"><span class="bt-lb">Автор</span><input type="text" id="pbA" value="${esc(s.author)}" placeholder="необязательно"></label>
     <label class="row" style="gap:8px;margin-top:10px"><input type="checkbox" id="pbR" ${b.read?'checked':''} style="width:auto"> Прочитана</label>
     <div class="row" style="margin-top:14px;gap:8px">
       <button class="btn sm" id="pbDel" style="color:var(--warn)">Удалить</button>
       <span class="spacer"></span><button class="btn sm" data-close>Отмена</button>
       <button class="btn primary" id="pbOk">Сохранить</button></div>`);
-  $('#pbOk').onclick=()=>{const t=$('#pbT').value.trim(); if(!t) return toast('Пустое название');
+  $('#pbOk').onclick=()=>{const t=bkJoin($('#pbT').value.replace(/\s+/g,' '),$('#pbA').value); if(!t) return toast('Пустое название');
     DB.notes.books[i]={id:b.id||uid(),text:t,read:$('#pbR').checked}; save(); closeSheet(); rPort()};
   $('#pbDel').onclick=()=>{if(!confirm('Удалить книгу из списка?')) return;
     DB.notes.books.splice(i,1); save(); closeSheet(); rPort(); toast('Удалено')};
@@ -3413,12 +3425,30 @@ function importJSON(){
    стирала из облака всё внесённое после неё. Теперь по умолчанию —
    объединение (ничего не удаляется, при расхождении остаётся здешнее),
    а замена сначала сохраняет текущую базу файлом. */
+/* «booksRename» в файле импорта — {«старое название»: «Название — Автор»}:
+   переименовывает книги по точному совпадению текста, сохраняя id и отметку
+   «прочитана». Так можно привести список в порядок, не трогая книги,
+   добавленные позже. Сам ключ в базу не попадает. */
+function applyBookRenames(map){
+  if(!isObj(map)) return 0;
+  const M=new Map(Object.entries(map).map(([a,b])=>[String(a).trim(),String(b||'').trim()]));
+  let n=0;
+  (DB.notes.books||[]).forEach((x,i,arr)=>{
+    const t=String(typeof x==='object'?x.text:x).trim(), to=M.get(t);
+    if(!to||to===t) return;
+    if(typeof x==='object') x.text=to; else arr[i]={id:uid(),text:to,read:false};
+    n++;
+  });
+  return n;
+}
 function importSheet(name,j){
   const nDays=o=>Object.keys(o.days||{}).length;
   const last=o=>Object.keys(o.days||{}).sort().pop()||'—';
+  const ren=isObj(j.booksRename)?j.booksRename:null;
   openSheet(`<h2>Импорт JSON</h2>
     <div class="small muted" style="margin-bottom:12px">Файл <b>${esc(name)}</b>: ${nDays(j)} дн., последний ${esc(last(j))}.<br>
-      Сейчас здесь: ${nDays(DB)} дн., последний ${esc(last(DB))}.</div>
+      Сейчас здесь: ${nDays(DB)} дн., последний ${esc(last(DB))}.
+      ${ren?`<br>В файле переименование книг: ${Object.keys(ren).length} названий — совпавшие получат вид «Название — Автор».`:''}</div>
     <div class="small" style="margin-bottom:8px"><b>Объединить</b> — добавить из файла то, чего здесь нет. Ничего не удаляется; где файл и здешние данные расходятся, остаётся здешнее.</div>
     <div class="small" style="margin-bottom:14px"><b>Заменить</b> — оставить только содержимое файла. Всё, чего в нём нет, удалится и здесь, и на Google Диске при синхронизации. Текущие данные перед этим сохранятся файлом.</div>
     <div class="row">
@@ -3429,7 +3459,7 @@ function importSheet(name,j){
   /* черновик дня мог остаться от прежней базы — в новую он попасть не должен */
   const done=msg=>{dayDraft={d:'',x:null};initFilters();save();closeSheet();render();toast(msg)};
   $('#imMrg').onclick=()=>{
-    const keys=Object.keys(j).filter(k=>k!=='updated');
+    const keys=Object.keys(j).filter(k=>k!=='updated'&&k!=='booksRename');
     const nPf=o=>(Array.isArray(o.portfolio)?o.portfolio:[]).length;
     const before=nDays(DB), pf0=nPf(DB), inc=normalize(j);
     tidyDays();
@@ -3439,14 +3469,15 @@ function importSheet(name,j){
     for(const k of keys){ const v=merge3(undefined,DB[k],inc[k],true); if(v!==undefined) m[k]=v }
     m.updated=DB.updated;
     DB=Object.assign(BLANK(),m);
-    const dd=nDays(DB)-before, dp=nPf(DB)-pf0;
-    done(`Объединено: добавлено дней ${dd}`+(dp?`, документов в портфолио ${dp}`:''));
+    const dd=nDays(DB)-before, dp=nPf(DB)-pf0, rn=applyBookRenames(ren);
+    done(`Объединено: добавлено дней ${dd}`+(dp?`, документов в портфолио ${dp}`:'')+(ren?`, переименовано книг ${rn}`:''));
   };
   $('#imRep').onclick=()=>{
     if(!confirm(`Заменить данные содержимым файла? Дней сейчас ${nDays(DB)}, в файле ${nDays(j)}.`))return;
     tidyDays();
     dl('dnevnik-'+today()+'-до-импорта.json',JSON.stringify(DB),'application/json');
-    DB=normalize(j);
+    const raw={...j}; delete raw.booksRename;
+    DB=normalize(raw); applyBookRenames(ren);
     done('Заменено. Прежние данные сохранены файлом');
   };
 }
