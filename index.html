@@ -212,20 +212,6 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .item{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--surface-2);margin-bottom:9px}
 .item h3{font-size:15px;margin-bottom:3px}
 .item .meta{font-size:12px;color:var(--ink-3)}
-.hm{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
-.hm i{aspect-ratio:1;border-radius:5px;background:var(--line-soft);display:block;position:relative}
-/* рабочий день — точка в углу клетки */
-.hm i.wk::after{content:"";position:absolute;top:2px;right:2px;width:4px;height:4px;
-  border-radius:50%;background:color-mix(in srgb,var(--ink) 45%,transparent)}
-.hm i.d1{background:color-mix(in srgb,var(--accent) 26%,var(--surface-2))}
-.hm i.d2{background:color-mix(in srgb,var(--accent) 52%,var(--surface-2))}
-.hm i.d3{background:color-mix(in srgb,var(--accent) 78%,var(--surface-2))}
-.hm i.d4{background:var(--accent)}
-.hm i.today{outline:2px solid var(--accent-2);outline-offset:1px}
-.hm.hm-act i{cursor:pointer;transition:transform .12s}
-.hm.hm-act i:hover{transform:scale(1.28);outline:1.5px solid var(--ink-3);outline-offset:1px}
-.hm.hm-act i:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
-.hm i.pick{outline:2px solid var(--ink);outline-offset:1px}
 /* Календарь жизни: 12 компактных месяцев в строке каждого года.
    Цвет панели показывает относительную сумму баллов; число остаётся
    читаемым и на узком экране. Будущие месяцы не закрашиваются. */
@@ -497,12 +483,32 @@ html[data-theme="dark"] .hero-chip.bad{background:#4a2c26}
 .hero-ev .ed{color:var(--ink-3);width:70px;flex:none;font-size:12px}
 .hero-mbars{display:flex;align-items:flex-end;gap:3px;height:72px;margin:12px 0 4px}
 .hero-mbars i{flex:1;background:var(--accent);border-radius:3px 3px 0 0;min-height:2px;opacity:.85}
+/* Портфолио (22.11.2026): документы, награды и книги */
+a.btn{text-decoration:none;color:inherit;display:inline-flex;align-items:center}
+.pf-sum{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:2px 0 12px}
+.pf-sum div{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:12px;padding:9px 6px;text-align:center}
+.pf-sum b{display:block;font-size:19px;line-height:1.15}
+.pf-sum span{font-size:11px;color:var(--ink-3)}
+.pf-item{display:flex;gap:11px;align-items:flex-start;padding:11px 2px;border-top:1px solid var(--line-soft);cursor:pointer}
+.pf-item:first-of-type{border-top:0}
+.pf-ic{font-size:21px;line-height:1.2;flex:none;width:26px;text-align:center}
+.pf-t{font-weight:600;font-size:14.5px;line-height:1.35}
+.pf-m{font-size:12.5px;color:var(--ink-2);margin-top:2px}
+.pf-n{font-size:12.5px;color:var(--ink-3);margin-top:3px;white-space:pre-wrap}
+.pf-lnk{flex:none;text-decoration:none;font-size:15px;padding:2px 4px;color:var(--accent)}
+.pf-yr{font-size:12px;font-weight:600;color:var(--ink-3);letter-spacing:.04em;margin:14px 0 2px}
+.pf-yr:first-child{margin-top:4px}
+.pf-bk{display:flex;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line-soft)}
+.pf-bk:first-of-type{border-top:0}
+.pf-bk .t{flex:1;cursor:pointer;font-size:14px}
+@media (max-width:400px){.pf-sum{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
 <header class="top"><div class="top-in">
   <div class="day-nav" id="dayNav" hidden></div>
   <div style="flex:1;min-width:0" id="ttlWrap"><h1 id="ttl">День</h1><div class="sub" id="sub"></div></div>
+  <button class="icon-btn hero-btn port-btn" id="portBtn" hidden aria-label="Портфолио" title="Портфолио: документы, награды, книги"><span aria-hidden="true">🎓</span></button>
   <button class="icon-btn hero-btn" id="heroBtn" hidden aria-label="Герой"></button>
   <button class="icon-btn sync-btn" id="syncBtn" title="Синхронизировать с Google Диском" aria-label="Синхронизировать с Google Диском"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/></svg><span class="sync-dot" id="syncDot"></span></button>
   <button class="icon-btn" id="themeBtn" title="Тема">◐</button>
@@ -515,6 +521,7 @@ html[data-theme="dark"] .hero-chip.bad{background:#4a2c26}
   <section class="view" id="v-life"></section>
   <section class="view" id="v-notes"></section>
   <section class="view" id="v-hero"></section>
+  <section class="view" id="v-port"></section>
 </main>
 <nav class="tabs"><div class="tabs-in" id="tabbar"></div></nav>
 <div class="modal" id="modal"><div class="scrim" data-close></div><div class="sheet" id="sheet"></div></div>
@@ -1086,14 +1093,14 @@ const LIFE_BIRTH='1988-08-23';
    облако, «Экспорт JSON»). Раньше они лежали здесь текстом; архив прежнего
    содержимого — файл «итоги-месяцев-2022-2026.json» в папке проекта. */
 const LIFE_SUMMARIES={};
-const BLANK=()=>({days:{},goals:[],notes:{},supps:[],sec:{},secDel:{},lifeBirth:LIFE_BIRTH,lifeSummaries:{},updated:0});
+const BLANK=()=>({days:{},goals:[],notes:{},supps:[],sec:{},secDel:{},lifeBirth:LIFE_BIRTH,lifeSummaries:{},portfolio:[],updated:0});
 let DB=BLANK(), CFG={...DEF_CFG}, cur=today(), tab='day';
 let dq='', gfilter='', nsec='';
 /* Разделы можно переименовать, добавить и удалить, поэтому активный фильтр
    держим проверенным: пропал раздел — встаём на первый доступный.
    Скрытый раздел первым не выбираем, иначе он откроется сам собой. */
 function initFilters(){
-  const s=SCOPES(), n=NSEC().filter(([k])=>k!==HIDDEN_SEC||zhOpen);
+  const s=SCOPES(), n=NSEC().filter(([k])=>(k!==HIDDEN_SEC||zhOpen)&&k!=='books');
   if(!gfilter||!s.some(x=>x[0]===gfilter)) gfilter=s[0][0];
   if(!nsec||!n.some(x=>x[0]===nsec)) nsec=(n[0]||NSEC()[0])[0];
 }
@@ -1658,19 +1665,21 @@ $('#tabbar').onclick=e=>{const b=e.target.closest('[data-tab]');if(b)go(b.datase
 function go(id){
   if(tab==='notes'&&id!=='notes'){zhOpen=false;zhTaps=0;if(nsec===HIDDEN_SEC){nsec='';initFilters()}}
   if(tab==='hero'&&id!=='hero'){heroRom=false;heroTaps=0}
-  /* «Герой» — экран без своей вкладки, открывается кнопкой-аватаром в шапке «Жизни» */
-  tab=id;$$('.tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===(id==='hero'?'life':id)));
+  /* «Герой» и «Портфолио» — экраны без своей вкладки, открываются кнопками в шапке «Жизни» */
+  tab=id;$$('.tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===(id==='hero'||id==='port'?'life':id)));
   $$('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+id));window.scrollTo({top:0});render()}
 function render(){
-  const T=TABS.find(t=>t.id===tab)||{name:'Герой'};
+  const T=TABS.find(t=>t.id===tab)||{name:tab==='port'?'Портфолио':'Герой'};
   /* На «Дне» вместо заголовка — переход по дням (его рисует rDay) */
   const isDay=tab==='day';
   $('#ttl').textContent=T.name; $('#sub').textContent='';
   $('#ttlWrap').hidden=isDay; $('#dayNav').hidden=!isDay; $('#themeBtn').hidden=isDay;
   if(!isDay) $('#dayNav').innerHTML='';
-  const hb=$('#heroBtn'); hb.hidden=!(tab==='life'||tab==='hero'); hb.classList.toggle('on',tab==='hero');
-  if(tab==='life') try{heroBtnPaint(heroCalc())}catch(e){}
-  ({day:rDay,diary:rDiary,goals:rGoals,stats:rStats,life:rLife,notes:rNotes,hero:rHero})[tab]();
+  const lifeArea=tab==='life'||tab==='hero'||tab==='port';
+  const hb=$('#heroBtn'); hb.hidden=!lifeArea; hb.classList.toggle('on',tab==='hero');
+  const pb=$('#portBtn'); pb.hidden=!lifeArea; pb.classList.toggle('on',tab==='port');
+  if(tab==='life'||tab==='port') try{heroBtnPaint(heroCalc())}catch(e){}
+  ({day:rDay,diary:rDiary,goals:rGoals,stats:rStats,life:rLife,notes:rNotes,hero:rHero,port:rPort})[tab]();
 }
 
 /* ================= ДЕНЬ ================= */
@@ -2753,6 +2762,188 @@ function heroRename(){
 }
 $('#heroBtn').onclick=()=>go(tab==='hero'?'life':'hero');
 
+/* ================= ПОРТФОЛИО (22.11.2026) =================
+   Экран без своей вкладки, кнопка 🎓 в шапке «Жизни», как у «Героя».
+   Документы — DB.portfolio: [{id,kind,title,org,date,dateTo,hours,num,link,note}],
+   date и dateTo — 'ГГГГ', 'ГГГГ-ММ' или 'ГГГГ-ММ-ДД'. Список с id, поэтому
+   при синхронизации сливается по элементам. Сами файлы (фото, PDF) в дневник
+   не кладём — localStorage маленький; у документа есть ссылка, например на
+   файл в Google Диске. Книги остаются в DB.notes.books (их читают ИИ и
+   переносы заметок), но показываются здесь, а из «Заметок» убраны.
+   В код ничего личного не вписывать: список приходит из данных. */
+const PF_KINDS=[
+  ['edu','🎓','Образование'],
+  ['course','📜','Курсы и сертификаты'],
+  ['award','🏆','Награды и грамоты'],
+  ['thanks','💌','Благодарности'],
+  ['other','✨','Прочее'],
+];
+const PF_K=Object.fromEntries(PF_KINDS.map(k=>[k[0],k]));
+let pfKind='', pfBooks='read';
+/* '22.06.2023' / '06.2023' / '2023' / '2023-06-22' -> '2023-06-22' / '2023-06' / '2023'; неразборчивое -> null */
+function pfDateIn(s){
+  s=String(s||'').trim(); if(!s) return '';
+  let m;
+  if(m=s.match(/^(\d{4})(?:-(\d{1,2})(?:-(\d{1,2}))?)?$/)) return [m[1],m[2]&&pad(+m[2]),m[3]&&pad(+m[3])].filter(Boolean).join('-');
+  if(m=s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/)) return `${m[3]}-${pad(+m[2])}-${pad(+m[1])}`;
+  if(m=s.match(/^(\d{1,2})[./](\d{4})$/)) return `${m[2]}-${pad(+m[1])}`;
+  return null;
+}
+const pfDateOut=s=>{if(!s) return ''; const p=String(s).split('-'); return p.reverse().join('.')};
+function pfWhen(x){
+  const a=pfDateOut(x.date), b=pfDateOut(x.dateTo);
+  return a&&b?a+' — '+b:a||b;
+}
+const pfList=()=>(Array.isArray(DB.portfolio)?DB.portfolio:[]).slice()
+  .sort((a,b)=>String(b.dateTo||b.date||'').localeCompare(String(a.dateTo||a.date||''))||String(a.title).localeCompare(String(b.title),'ru'));
+const pfBookList=()=>(DB.notes.books||[]).map((x,i)=>({...(typeof x==='object'?x:{text:x,read:false}),i}));
+
+function rPort(){
+  migrateBooks();
+  const all=pfList(), L=pfKind?all.filter(x=>(x.kind||'other')===pfKind):all;
+  const hrs=all.reduce((s,x)=>s+(+x.hours||0),0);
+  const books=pfBookList(), read=books.filter(b=>b.read), want=books.filter(b=>!b.read);
+  const cnt=k=>all.filter(x=>(x.kind||'other')===k).length;
+  const yr=x=>String(x.dateTo||x.date||'').slice(0,4)||'Без даты';
+  let lastY=null;
+  const items=L.map(x=>{
+    const k=PF_K[x.kind]||PF_K.other, y=yr(x), head=y!==lastY?`<div class="pf-yr">${esc(y)}</div>`:''; lastY=y;
+    const meta=[x.org,pfWhen(x),+x.hours?x.hours+' ч':''].filter(Boolean).map(esc).join(' · ');
+    return head+`<div class="pf-item" data-id="${esc(x.id)}" role="button" tabindex="0">
+      <span class="pf-ic" aria-hidden="true">${k[1]}</span>
+      <div style="flex:1;min-width:0"><div class="pf-t">${esc(x.title||'Без названия')}</div>
+        ${meta?`<div class="pf-m">${meta}</div>`:''}${x.note?`<div class="pf-n">${esc(x.note)}</div>`:''}</div>
+      ${/^https?:\/\//.test(x.link||'')?`<a class="pf-lnk" href="${esc(x.link)}" target="_blank" rel="noopener" title="Открыть файл" data-stop>📎</a>`:''}
+    </div>`}).join('');
+  const shown=pfBooks==='read'?read:want;
+  $('#v-port').innerHTML=`
+  <div class="card">
+    <div class="pf-sum">
+      <div><b>${all.length}</b><span>документов</span></div>
+      <div><b>${cnt('course')+cnt('edu')}</b><span>обучение</span></div>
+      <div><b>${hrs.toLocaleString('ru')}</b><span>часов учёбы</span></div>
+      <div><b>${read.length}</b><span>книг прочитано</span></div>
+    </div>
+    <div class="row" style="gap:8px;flex-wrap:wrap">
+      <button class="btn primary sm" id="pfAdd">+ Документ</button>
+      ${/^https?:\/\//.test(DB.portfolioFolder||'')?`<a class="btn sm" href="${esc(DB.portfolioFolder)}" target="_blank" rel="noopener">📁 Папка с файлами</a>`:''}
+      <span class="spacer"></span>
+      <button class="btn ghost sm" id="pfFold" title="Ссылка на папку с файлами документов">📁 Ссылка</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Документы</h2>
+    <div class="chips" style="margin:6px 0 4px">
+      <button class="chip pfk ${pfKind?'':'on'}" data-k="">Все ${all.length}</button>
+      ${PF_KINDS.filter(([k])=>cnt(k)||k===pfKind).map(([k,ic,n])=>`<button class="chip pfk ${pfKind===k?'on':''}" data-k="${k}">${ic} ${n} ${cnt(k)}</button>`).join('')}
+    </div>
+    ${items||`<div class="empty">${all.length?'В этой группе пусто':'Пока пусто. Добавьте сертификат, диплом или грамоту кнопкой «+ Документ» — или загрузите готовый список через «Статистика → Импорт JSON».'}</div>`}
+  </div>
+  <div class="card">
+    <h2>📚 Книги</h2>
+    <div class="seg" style="margin:8px 0 10px">
+      <button class="${pfBooks==='read'?'on':''}" data-bk="read">Прочитано ${read.length}</button>
+      <button class="${pfBooks==='want'?'on':''}" data-bk="want">Хочу прочитать ${want.length}</button>
+    </div>
+    <div class="row" style="gap:8px;margin-bottom:6px">
+      <input type="text" id="pfBkIn" placeholder="${pfBooks==='read'?'Прочитанная книга':'Книга в планах'} — Автор, «Название»" style="flex:1">
+      <button class="btn sm" id="pfBkAdd">Добавить</button>
+    </div>
+    ${shown.length?shown.map(b=>`<div class="pf-bk">
+      <button class="btn ghost bookRead${b.read?' on':''}" data-bi="${b.i}" title="${b.read?'Вернуть в «Хочу прочитать»':'Прочитана'}" aria-label="${b.read?'Прочитана':'Не прочитана'}">${b.read?'✓':'○'}</button>
+      <span class="t" data-be="${b.i}">${hl(b.text)}</span></div>`).join('')
+      :`<div class="empty">${pfBooks==='read'?'Отметьте книгу галочкой, когда дочитаете':'Список пуст'}</div>`}
+  </div>`;
+  $('#pfAdd').onclick=()=>pfEdit(null);
+  $('#pfFold').onclick=pfFolderSheet;
+  $$('#v-port .pfk').forEach(b=>b.onclick=()=>{pfKind=b.dataset.k;rPort()});
+  $$('#v-port .pf-item').forEach(el=>{
+    const open=e=>{if(e.target.closest('[data-stop]')) return; pfEdit(el.dataset.id)};
+    el.onclick=open; el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open(e)}};
+  });
+  $$('#v-port [data-bk]').forEach(b=>b.onclick=()=>{pfBooks=b.dataset.bk;rPort()});
+  const addBook=()=>{const t=$('#pfBkIn').value.trim(); if(!t) return;
+    DB.notes.books=DB.notes.books||[]; DB.notes.books.unshift({id:uid(),text:t,read:pfBooks==='read'});
+    save(); rPort(); toast('Книга добавлена')};
+  $('#pfBkAdd').onclick=addBook;
+  $('#pfBkIn').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addBook()}};
+  $$('#v-port [data-bi]').forEach(b=>b.onclick=()=>{
+    const x=DB.notes.books[+b.dataset.bi]; if(!x) return;
+    if(typeof x==='string') DB.notes.books[+b.dataset.bi]={id:uid(),text:x,read:true}; else x.read=!x.read;
+    save(); rPort(); toast(x.read===false?'Вернул в «Хочу прочитать»':'Отмечено: прочитана')});
+  $$('#v-port [data-be]').forEach(s=>s.onclick=()=>pfBookEdit(+s.dataset.be));
+}
+function pfBookEdit(i){
+  const x=DB.notes.books[i]; if(x==null) return;
+  const b=typeof x==='object'?x:{text:x,read:false};
+  openSheet(`<h2>Книга</h2>
+    <textarea id="pbT" style="min-height:90px">${esc(b.text)}</textarea>
+    <label class="row" style="gap:8px;margin-top:10px"><input type="checkbox" id="pbR" ${b.read?'checked':''} style="width:auto"> Прочитана</label>
+    <div class="row" style="margin-top:14px;gap:8px">
+      <button class="btn sm" id="pbDel" style="color:var(--warn)">Удалить</button>
+      <span class="spacer"></span><button class="btn sm" data-close>Отмена</button>
+      <button class="btn primary" id="pbOk">Сохранить</button></div>`);
+  $('#pbOk').onclick=()=>{const t=$('#pbT').value.trim(); if(!t) return toast('Пустое название');
+    DB.notes.books[i]={id:b.id||uid(),text:t,read:$('#pbR').checked}; save(); closeSheet(); rPort()};
+  $('#pbDel').onclick=()=>{if(!confirm('Удалить книгу из списка?')) return;
+    DB.notes.books.splice(i,1); save(); closeSheet(); rPort(); toast('Удалено')};
+}
+function pfEdit(id){
+  DB.portfolio=Array.isArray(DB.portfolio)?DB.portfolio:[];
+  const x=id?DB.portfolio.find(p=>p.id===id):null;
+  if(id&&!x) return;
+  const v=x||{kind:pfKind||'course'};
+  const f=(lab,idn,val,ph,type='text')=>`<label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">${lab}</span>
+    <input type="${type}" id="${idn}" value="${esc(val??'')}" placeholder="${esc(ph||'')}"${type==='number'?' inputmode="numeric" min="0"':''}></label>`;
+  openSheet(`<h2>${x?'Документ':'Новый документ'}</h2>
+    <label class="bt-col" style="margin-bottom:10px"><span class="bt-lb">Вид</span>
+      <select id="pfK">${PF_KINDS.map(([k,ic,n])=>`<option value="${k}"${(v.kind||'other')===k?' selected':''}>${ic} ${n}</option>`).join('')}</select></label>
+    ${f('Название','pfT',v.title,'Например: «Основы Python»')}
+    ${f('Кто выдал','pfO',v.org,'Учебный центр, компания, школа')}
+    <div class="row" style="gap:8px">
+      <div style="flex:1">${f('Дата','pfD',pfDateOut(v.date),'22.06.2023 или 2023')}</div>
+      <div style="flex:1">${f('По (если период)','pfD2',pfDateOut(v.dateTo),'необязательно')}</div>
+    </div>
+    <div class="row" style="gap:8px">
+      <div style="flex:1">${f('Часов','pfH',v.hours||'','—','number')}</div>
+      <div style="flex:2">${f('Номер документа','pfN',v.num,'необязательно')}</div>
+    </div>
+    ${f('Ссылка на файл','pfL',v.link,'https://drive.google.com/…','url')}
+    <label class="bt-col"><span class="bt-lb">Заметка</span><textarea id="pfNo" style="min-height:64px" placeholder="Уровень, оценка, что дало">${esc(v.note||'')}</textarea></label>
+    <div class="row" style="margin-top:14px;gap:8px">
+      ${x?'<button class="btn sm" id="pfDel" style="color:var(--warn)">Удалить</button>':''}
+      <span class="spacer"></span><button class="btn sm" data-close>Отмена</button>
+      <button class="btn primary" id="pfOk">Сохранить</button></div>`);
+  $('#pfOk').onclick=()=>{
+    const title=$('#pfT').value.trim(); if(!title) return toast('Укажите название');
+    const d=pfDateIn($('#pfD').value), d2=pfDateIn($('#pfD2').value);
+    if(d===null||d2===null) return toast('Дата: 22.06.2023, 06.2023 или 2023');
+    if(d&&d2&&d2<d) return toast('«По» не может быть раньше даты начала');
+    const link=$('#pfL').value.trim();
+    if(link&&!/^https?:\/\//.test(link)) return toast('Ссылка должна начинаться с https://');
+    const rec={id:x?x.id:uid(),kind:$('#pfK').value,title,org:$('#pfO').value.trim(),
+      date:d,dateTo:d2,hours:Math.max(0,+$('#pfH').value||0),num:$('#pfN').value.trim(),link,note:$('#pfNo').value.trim()};
+    /* пустые поля не храним — так меньше шума при слиянии копий */
+    for(const k of Object.keys(rec)) if(rec[k]===''||rec[k]===0) delete rec[k];
+    if(x) Object.keys(x).forEach(k=>delete x[k]), Object.assign(x,rec); else DB.portfolio.unshift(rec);
+    save(); closeSheet(); rPort(); toast(x?'Сохранено':'Добавлено');
+  };
+  if(x) $('#pfDel').onclick=()=>{if(!confirm(`Удалить «${x.title}» из портфолио?`)) return;
+    DB.portfolio=DB.portfolio.filter(p=>p.id!==x.id); save(); closeSheet(); rPort(); toast('Удалено')};
+}
+function pfFolderSheet(){
+  openSheet(`<h2>📁 Папка с файлами</h2>
+    <div class="small muted" style="margin-bottom:10px">Ссылка на папку Google Диска со сканами документов. Сами файлы в дневник не загружаются — только ссылка.</div>
+    <input type="url" id="pfF" value="${esc(DB.portfolioFolder||'')}" placeholder="https://drive.google.com/drive/folders/…">
+    <div class="row" style="margin-top:14px;gap:8px"><span class="spacer"></span>
+      <button class="btn sm" data-close>Отмена</button><button class="btn primary" id="pfFOk">Сохранить</button></div>`);
+  $('#pfFOk').onclick=()=>{const v=$('#pfF').value.trim();
+    if(v&&!/^https?:\/\//.test(v)) return toast('Ссылка должна начинаться с https://');
+    if(v) DB.portfolioFolder=v; else delete DB.portfolioFolder;
+    save(); closeSheet(); rPort()};
+}
+$('#portBtn').onclick=()=>go(tab==='port'?'life':'port');
+
 /* ================= СТАТИСТИКА (без графиков) ================= */
 function rStats(){
   const ds=sortedDays(), last=n=>ds.filter(d=>d>=addD(today(),-n));
@@ -2800,10 +2991,6 @@ function rStats(){
       ${row('Общение',x=>x.social)}
     </table>
   </div>
-  <div class="card">
-    <h2>Активность за 12 недель</h2>
-    ${heat()}
-  </div>
   <div class="card"><h2>Топ добавок за 90 дней</h2>${topSupp()}</div>
   <div class="card">
     <h2>Данные</h2>
@@ -2824,30 +3011,6 @@ function rStats(){
   $('#imB').onclick=importBand;
   $('#bsB').onclick=bandSheet;
   $('#cfg').onclick=syncSheet;
-  const hm=$('#hm');
-  if(hm){
-    const open=e=>{const b=e.target.closest('[data-d]');if(!b)return;
-      cur=b.dataset.d; go('day')};
-    hm.onclick=open;
-    hm.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open(e)}};
-  }
-}
-function heat(){
-  const end=today();
-  let start=addD(end,-83);
-  const sd=pISO(start).getDay(); start=addD(start,-((sd+6)%7)); // с понедельника
-  let d=start; const out=[];
-  while(d<=end){
-    const s=score(d), lvl=s>=8?4:s>=6?3:s>=4?2:s>=1?1:0, w=isWork(d);
-    out.push(`<i class="${lvl?'d'+lvl:''}${w?' wk':''}${d===end?' today':''}${d===cur?' pick':''}" data-d="${d}" role="button" tabindex="0" title="${fmtD(d)}: ${s}${w?', рабочий':''} — открыть"></i>`);
-    d=addD(d,1);
-  }
-  return `<div class="small muted" style="margin-bottom:8px">Щёлкните по дню, чтобы открыть его.
-    Точка в углу — рабочий день</div>
-    <div class="hm hm-act" id="hm" style="grid-template-columns:repeat(${Math.ceil(out.length/7)},1fr);grid-auto-flow:column;grid-template-rows:repeat(7,1fr)">${out.join('')}</div>
-    <div class="row small muted" style="margin-top:9px"><span>меньше</span>
-    <span class="hm" style="display:inline-grid;grid-template-columns:repeat(5,12px);gap:3px;margin:0 8px">
-    <i></i><i class="d1"></i><i class="d2"></i><i class="d3"></i><i class="d4"></i></span><span>больше</span></div>`;
 }
 function topSupp(){
   const c={}, from=addD(today(),-90);
@@ -3266,12 +3429,18 @@ function importSheet(name,j){
   /* черновик дня мог остаться от прежней базы — в новую он попасть не должен */
   const done=msg=>{dayDraft={d:'',x:null};initFilters();save();closeSheet();render();toast(msg)};
   $('#imMrg').onclick=()=>{
-    const before=nDays(DB), inc=normalize(j);
+    const keys=Object.keys(j).filter(k=>k!=='updated');
+    const nPf=o=>(Array.isArray(o.portfolio)?o.portfolio:[]).length;
+    const before=nDays(DB), pf0=nPf(DB), inc=normalize(j);
     tidyDays();
-    const m=merge3(undefined,DB,inc,true);
+    /* сливаем только то, что есть в файле: файл с одним портфолио не должен
+       подтягивать разделы и настройки, которые миграции дописали бы в пустую копию */
+    const m={...DB};
+    for(const k of keys){ const v=merge3(undefined,DB[k],inc[k],true); if(v!==undefined) m[k]=v }
     m.updated=DB.updated;
     DB=Object.assign(BLANK(),m);
-    done(`Объединено: добавлено дней ${nDays(DB)-before}`);
+    const dd=nDays(DB)-before, dp=nPf(DB)-pf0;
+    done(`Объединено: добавлено дней ${dd}`+(dp?`, документов в портфолио ${dp}`:''));
   };
   $('#imRep').onclick=()=>{
     if(!confirm(`Заменить данные содержимым файла? Дней сейчас ${nDays(DB)}, в файле ${nDays(j)}.`))return;
@@ -3608,7 +3777,8 @@ function rNotes(){
   if(nsec==='books') migrateBooks();
   const list=DB.notes[nsec]||[];
   const emoKey=emoSecKey();
-  const vis=NSEC().filter(([k])=>(k!==HIDDEN_SEC||zhOpen)&&k!==emoKey);
+  /* «Книги» с 22.11.2026 живут в «Портфолио» (кнопка 🎓 на «Жизни») */
+  const vis=NSEC().filter(([k])=>(k!==HIDDEN_SEC||zhOpen)&&k!==emoKey&&k!=='books');
   const isEmo=!!emoKey&&nsec===emoKey;
   $('#v-notes').innerHTML=`
   <div class="card">
