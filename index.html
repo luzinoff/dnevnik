@@ -3829,7 +3829,11 @@ async function psyRun(i){
   try{
     const r=await aiCall(PSY_SYS,`Запись для разбора:\n${text}\n\n`+(past?`Прошлые записи (новые сверху):\n${past}`:'Прошлых записей нет.'),{temperature:0.6});
     DB.psy=DB.psy||{}; DB.psy[h]={text:r.text,at:Date.now(),model:r.model};
-    psyOpen=h; save(); toast('Разбор готов');
+    /* разбор психологом — это тоже «Разбор эмоций»: ставим плитку за сегодня.
+       Так отметка появится и для записи, сделанной раньше или на устройстве
+       со старой версией, где новая запись плитку ещё не ставила */
+    const d=day(today()), mark=!(+d.emo>0); if(mark) d.emo=1;
+    psyOpen=h; save(); toast(mark?'Разбор готов · 💭 отмечен «Разбор эмоций»':'Разбор готов');
   }catch(e){ toast(aiErr(e)) }
   finally{ delete psyBusy[h]; if(tab==='notes') rNotes() }
 }
