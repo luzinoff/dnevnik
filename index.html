@@ -844,7 +844,7 @@ const workManual=d=>{const x=DB.days[d];return !!x&&x.work!=null};
    Разложены по разделам: на экране идут группами, в расчёте балла — плоским
    списком. Спорт живёт в отдельной карточке выше, но в балл входит наравне. */
 const ACT_GROUPS=[
- /* ask — вопрос после нажатия: ответ дописывается строкой «значок Плитка: текст»
+ /* ask — вопрос после нажатия: ответ дописывается строкой «значок текст»
     в запись дня (actAsk). Строки плиток из AI_PRIV в ИИ не уходят (aiNoteForAi). */
  {g:'Английский', items:[
    {k:'eng_duo', ic:'🦉', lb:'Duolingo'},
@@ -2037,7 +2037,7 @@ function bindDay(){
     const v=nt.value.trim(); v?x.note=v:delete x.note; save();},600)};
 }
 /* Плитка с вопросом (ask в ACT_GROUPS): после нажатия — короткая строка,
-   которая дописывается в запись дня как «значок Плитка: текст». Пропуск или
+   которая дописывается в запись дня как «значок текст». Пропуск или
    пустой ввод — плитка просто засчитана. Удержание (−1) окна не открывает
    и строку не стирает: запись дня правится руками. */
 function actAsk(a,x){
@@ -2049,7 +2049,8 @@ function actAsk(a,x){
       <button class="btn primary" id="aqOk" style="flex:1">Записать</button></div>`);
   const inp=$('#aqT'); setTimeout(()=>inp.focus(),60);
   const ok=()=>{const t=inp.value.trim().replace(/\s+/g,' ');
-    if(t){ const line=`${a.ic} ${a.lb}: ${t}`;
+    /* с 24.11.2026 строка — только значок и текст: «👥 Бегал с ребятами» */
+    if(t){ const line=`${a.ic} ${t}`;
       x.note=x.note?String(x.note).replace(/\s+$/,'')+'\n'+line:line; save(); toast('Записано в дневник дня') }
     closeSheet(); if(tab==='day') rDay()};
   $('#aqOk').onclick=ok;
@@ -4031,9 +4032,12 @@ const aiKeyNow=()=>aiKeyOf(aiProv()), aiModelNow=()=>aiModelOf(aiProv());
    ни строка, дописанная в запись дня через вопрос плитки (actAsk). */
 const AI_PRIV=['dapp','dating','sexn','hand'];
 const AI_ACTS=ACTS.filter(a=>!AI_PRIV.includes(a.k)&&a.k!=='sport');
-/* текст записи дня для ИИ: без строк «значок Плитка: …» приватных плиток */
+/* текст записи дня для ИИ: без строк приватных плиток (по значку или прежнему «Плитка:») */
 function aiNoteForAi(note){
-  const pre=ACTS.filter(a=>AI_PRIV.includes(a.k)).flatMap(a=>[`${a.ic} ${a.lb}:`,`${a.lb}:`]);
+  /* строки приватных плиток узнаём по значку в начале (нынешний вид «💐 текст»)
+     и по названию (прежний вид «💐 Свидание: текст», «Свидание: текст»);
+     значок сравниваем и без «вариационного» символа U+FE0F — ❤ и ❤️ */
+  const pre=ACTS.filter(a=>AI_PRIV.includes(a.k)).flatMap(a=>[a.ic,a.ic.replace(/️/g,''),`${a.lb}:`]);
   return String(note||'').split('\n').filter(l=>{const t=l.trim(); return !pre.some(p=>t.startsWith(p))}).join('\n');
 }
 const aiBusy={}, aiLastErr={};
