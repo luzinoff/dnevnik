@@ -844,38 +844,40 @@ const workManual=d=>{const x=DB.days[d];return !!x&&x.work!=null};
    Разложены по разделам: на экране идут группами, в расчёте балла — плоским
    списком. Спорт живёт в отдельной карточке выше, но в балл входит наравне. */
 const ACT_GROUPS=[
+ /* ask — вопрос после нажатия: ответ дописывается строкой «значок Плитка: текст»
+    в запись дня (actAsk). Строки плиток из AI_PRIV в ИИ не уходят (aiNoteForAi). */
  {g:'Английский', items:[
    {k:'eng_duo', ic:'🦉', lb:'Duolingo'},
    {k:'eng_ai',  ic:'🤖', lb:'AI-бот'},
-   {k:'eng_nat', ic:'🗣️', lb:'Носитель', hint:'общение с носителем языка'}]},
+   {k:'eng_nat', ic:'🗣️', lb:'Носитель', hint:'общение с носителем языка', ask:'С кем говорил, о чём?'}]},
  {g:'Знания', items:[
-   {k:'exp',    ic:'✨', lb:'Новый опыт'},
-   {k:'places', ic:'🗺️', lb:'Новые места'},
-   {k:'books',  ic:'📚', lb:'Книги'},
-   {k:'study',  ic:'🎓', lb:'Учёба', hint:'курсы, уроки, вебинары, домашние задания'}]},
+   {k:'exp',    ic:'✨', lb:'Новый опыт', ask:'Что нового?'},
+   {k:'places', ic:'🗺️', lb:'Новые места', ask:'Где был?'},
+   {k:'books',  ic:'📚', lb:'Книги', ask:'Что читал?'},
+   {k:'study',  ic:'🎓', lb:'Учёба', hint:'курсы, уроки, вебинары, домашние задания', ask:'Что изучал?'}]},
  {g:'Общение', items:[
    {k:'friends', ic:'👥', lb:'Знакомые'},
-   {k:'people',  ic:'🙋', lb:'Новые люди'},
+   {k:'people',  ic:'🙋', lb:'Новые люди', ask:'С кем познакомился?'},
    {k:'touch',   ic:'🤝', lb:'Соц касание', hint:'короткий контакт: заговорил, поздоровался, написал'}]},
  {g:'Отношения', items:[
    /* добавлено 12.11.2026: активные действия в приложениях знакомств */
    {k:'dapp',   ic:'📱', lb:'Дейтинг', hint:'активные действия в приложениях знакомств: свайпы, переписка, анкета'},
-   {k:'dating', ic:'💐', lb:'Свидание'},
-   {k:'sexn',   ic:'❤️', lb:'Секс'},
+   {k:'dating', ic:'💐', lb:'Свидание', ask:'С кем, как прошло?'},
+   {k:'sexn',   ic:'❤️', lb:'Секс', ask:'С кем?'},
    /* w0: отметка для наблюдения, в балл дня не идёт */
    {k:'hand',   ic:'❓', lb:'Р', w0:true}]},
  /* бывшее «Прочее» разделено 03.11.2026: в нём набралось восемь плиток */
  {g:'Дела', items:[
    {k:'house', ic:'📋', lb:'Бытовуха'},
-   {k:'health',ic:'🩺', lb:'Здоровье', hint:'забота о здоровье: врачи, анализы, лечение, донорство, массаж'},
-   {k:'gig',   ic:'💼', lb:'Подработка', hint:'разовый заработок вне основной работы: перепродажа, ремонт техники'},
-   {k:'money', ic:'🚀', lb:'Проекты'}]},
+   {k:'health',ic:'🩺', lb:'Здоровье', hint:'забота о здоровье: врачи, анализы, лечение, донорство, массаж', ask:'Что делал для здоровья?'},
+   {k:'gig',   ic:'💼', lb:'Подработка', hint:'разовый заработок вне основной работы: перепродажа, ремонт техники', ask:'Что за подработка?'},
+   {k:'money', ic:'🚀', lb:'Проекты', ask:'Что сделал по проекту?'}]},
  {g:'Внутреннее', items:[
-   {k:'will',  ic:'🔥', lb:'Воля', hint:'сделал через сопротивление'},
+   {k:'will',  ic:'🔥', lb:'Воля', hint:'сделал через сопротивление', ask:'Что сделал через сопротивление?'},
    {k:'medit', ic:'🧘', lb:'Медитация'},
    /* добавлено 22.11.2026: разобрал чувства — дневник эмоций, ИИ-психолог, рефлексия */
    {k:'emo',   ic:'💭', lb:'Разбор эмоций', hint:'разобрал свои чувства: дневник эмоций, ИИ-психолог, рефлексия'},
-   {k:'post',  ic:'📣', lb:'Посты'}]}
+   {k:'post',  ic:'📣', lb:'Посты', ask:'О чём пост?'}]}
 ];
 const ACTS=[{k:'sport', ic:'🏋️', lb:'Спорт'}, ...ACT_GROUPS.flatMap(g=>g.items)];
 
@@ -2001,14 +2003,22 @@ function bindDay(){
     x.ex=x.ex||{}; const v=i.value.trim();
     v?x.ex[i.dataset.n]=v:delete x.ex[i.dataset.n]; save();
   });
+  /* недописанный (ещё не сохранённый) текст записи дня забираем сразу:
+     иначе его отложенное сохранение затёрло бы строку, дописанную плиткой */
+  const flushNote=()=>{const n=$('#nt'); if(n&&n._t){clearTimeout(n._t); n._t=null;
+    const v=n.value.trim(); v?x.note=v:delete x.note}};
   const bump=(k,dir)=>{
+    flushNote();
     x[k]=clamp((+x[k]||0)+dir,0,3); if(!x[k])delete x[k];
     save(); rDay();
   };
   const A=$('#acts'); let held=false, ht=null;
   A.onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;
     if(held){held=false;return}
-    bump(b.dataset.k, +1);
+    const k=b.dataset.k;
+    bump(k, +1);
+    const a=ACTS.find(t=>t.k===k);
+    if(a&&a.ask) actAsk(a,x);
   };
   A.oncontextmenu=e=>{const b=e.target.closest('[data-k]');if(!b)return;
     e.preventDefault(); bump(b.dataset.k,-1);
@@ -2023,8 +2033,27 @@ function bindDay(){
   A.addEventListener('pointerdown',holdStart);
   ['pointerup','pointerleave','pointercancel','scroll'].forEach(ev=>A.addEventListener(ev,holdEnd));
   const nt=$('#nt');
-  nt.oninput=()=>{clearTimeout(nt._t);nt._t=setTimeout(()=>{
+  nt.oninput=()=>{clearTimeout(nt._t);nt._t=setTimeout(()=>{nt._t=null;
     const v=nt.value.trim(); v?x.note=v:delete x.note; save();},600)};
+}
+/* Плитка с вопросом (ask в ACT_GROUPS): после нажатия — короткая строка,
+   которая дописывается в запись дня как «значок Плитка: текст». Пропуск или
+   пустой ввод — плитка просто засчитана. Удержание (−1) окна не открывает
+   и строку не стирает: запись дня правится руками. */
+function actAsk(a,x){
+  openSheet(`<h2>${a.ic} ${esc(a.lb)}</h2>
+    <label class="bt-col"><span class="bt-lb">${esc(a.ask)}</span>
+      <input type="text" id="aqT" placeholder="Коротко — допишется в «Дневник дня»" autocomplete="off"></label>
+    <div class="small muted" style="margin-top:6px">${AI_PRIV.includes(a.k)?'Эта строка в разборы ИИ не отправляется.':'Строка попадёт в запись дня и в разборы ИИ вместе с ней.'}</div>
+    <div class="row" style="margin-top:14px;gap:8px"><button class="btn" data-close style="flex:1">Пропустить</button>
+      <button class="btn primary" id="aqOk" style="flex:1">Записать</button></div>`);
+  const inp=$('#aqT'); setTimeout(()=>inp.focus(),60);
+  const ok=()=>{const t=inp.value.trim().replace(/\s+/g,' ');
+    if(t){ const line=`${a.ic} ${a.lb}: ${t}`;
+      x.note=x.note?String(x.note).replace(/\s+$/,'')+'\n'+line:line; save(); toast('Записано в дневник дня') }
+    closeSheet(); if(tab==='day') rDay()};
+  $('#aqOk').onclick=ok;
+  inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();ok()}};
 }
 function suppSheet(){
   const x=day(cur), all=DB.supps.map(s=>s.name);
@@ -3887,7 +3916,12 @@ function addNote(voice){
   $('#nok').onclick=()=>{const t=$('#ntx').value.trim();if(!t)return toast('Пусто');
     DB.notes[nsec]=DB.notes[nsec]||[];
     DB.notes[nsec].unshift(nsec==='books'?{id:uid(),text:t,read:false}:t);
-    save();closeSheet();rNotes()};
+    /* новая запись в «Дневнике эмоций» сама ставит сегодня плитку «Разбор эмоций»
+       (если она ещё не стоит; несколько записей балл не раздувают) */
+    let emoMark=false;
+    if(nsec&&nsec===emoSecKey()){ const d=day(today()); if(!(+d.emo>0)){ d.emo=1; emoMark=true } }
+    save();closeSheet();rNotes();
+    if(emoMark) toast('💭 Отмечен «Разбор эмоций» за сегодня')};
 }
 /* Правка заметки: текст, тип и раздел в одном окне. Смена раздела —
    это перенос: запись уходит из текущего списка в начало выбранного.
@@ -3989,7 +4023,15 @@ const aiProv=()=>luzAiProv(CFG.aiProvider), aiName=()=>LUZ_AI[aiProv()].name;
 const aiKeyOf=p=>(luzAiProv(p)==='deepseek'?CFG.dsKey:CFG.aiKey)||'';
 const aiModelOf=p=>(((luzAiProv(p)==='deepseek'?CFG.dsModel:CFG.aiModel)||'').trim())||LUZ_AI[luzAiProv(p)].def;
 const aiKeyNow=()=>aiKeyOf(aiProv()), aiModelNow=()=>aiModelOf(aiProv());
-const AI_ACTS=ACTS.filter(a=>!['dapp','dating','sexn','hand'].includes(a.k)&&a.k!=='sport');
+/* Плитки «Отношений», которые в ИИ не уходят никогда: ни сама отметка,
+   ни строка, дописанная в запись дня через вопрос плитки (actAsk). */
+const AI_PRIV=['dapp','dating','sexn','hand'];
+const AI_ACTS=ACTS.filter(a=>!AI_PRIV.includes(a.k)&&a.k!=='sport');
+/* текст записи дня для ИИ: без строк «значок Плитка: …» приватных плиток */
+function aiNoteForAi(note){
+  const pre=ACTS.filter(a=>AI_PRIV.includes(a.k)).flatMap(a=>[`${a.ic} ${a.lb}:`,`${a.lb}:`]);
+  return String(note||'').split('\n').filter(l=>{const t=l.trim(); return !pre.some(p=>t.startsWith(p))}).join('\n');
+}
 const aiBusy={}, aiLastErr={};
 /* Выбранный период разбора помним в sessionStorage: на телефоне страница
    при переключении приложений может перезагрузиться, и без этого карточка
@@ -4041,7 +4083,8 @@ function aiDayLine(d,withText,noSteps){
   const acts=AI_ACTS.filter(a=>+x[a.k]).map(a=>a.lb+(+x[a.k]>1?' ×'+x[a.k]:''));
   if(acts.length) p.push('активности: '+acts.join(', '));
   if((x.supp||[]).length) p.push('добавки: '+x.supp.join(', '));
-  if(withText&&String(x.note||'').trim()) p.push('запись: «'+String(x.note).trim().replace(/\s+/g,' ')+'»');
+  const note=aiNoteForAi(x.note).trim();
+  if(withText&&note) p.push('запись: «'+note.replace(/\s+/g,' ')+'»');
   return p.join('; ');
 }
 /* средние за набор дней — для сравнения с прошлым периодом */
