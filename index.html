@@ -388,6 +388,10 @@ input[type=text],input[type=number],input[type=date],input[type=time],input[type
   color:var(--surface);font-size:10.5px;line-height:18px;text-align:center;
   position:absolute;top:-6px;right:-4px;box-shadow:0 0 0 2px var(--surface)}
 .act .n:empty{display:none}
+/* «Была тренировка» — такой же кружок со счётом, как у плиток (25.11.2026) */
+.act-n{position:absolute;top:-6px;right:-4px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);
+  color:var(--surface);font-size:10.5px;font-weight:700;line-height:18px;text-align:center;box-shadow:0 0 0 2px var(--surface)}
+#spt{overflow:visible}
 /* спорт: поля упражнений ещё плотнее */
 #spt + .grid2 .fld>span{font-size:11.5px}
 #spt + .grid2 input{padding-top:6px;padding-bottom:6px}
@@ -1816,7 +1820,7 @@ function rDay(){
     <h2>🏋️ Спорт</h2>
     <div class="seg" id="spt">
       <button data-v="0" class="${!x.sport?'on':''}">Не было</button>
-      <button data-v="1" class="${x.sport?'on':''}">Была тренировка</button>
+      <button data-v="1" class="${x.sport?'on':''}" style="position:relative">Была тренировка${x.sport?'<span class="act-n" aria-label="плюс 1 к баллу">1</span>':''}</button>
     </div>
     ${x.sport?`<div class="grid2" style="margin-top:12px">${EXS.map(([n,ph])=>
       `<label class="fld"><span>${n}</span><input type="text" class="exi" data-n="${n}" value="${esc((x.ex||{})[n]||'')}" placeholder="${ph}"></label>`).join('')}</div>`:''}
