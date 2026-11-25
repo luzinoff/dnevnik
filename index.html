@@ -88,6 +88,8 @@ nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:50;
 .psy{margin:2px 0 6px 2px;border-left:3px solid var(--accent-soft);padding-left:10px}
 .psy summary{cursor:pointer;font-size:12.5px;color:var(--accent);padding:3px 0}
 .psy .ai-text{font-size:13.5px;padding:4px 0 2px}
+.emo-entry{padding:8px 12px}
+.emo-entry .psy{margin-bottom:2px}
 /* Срок пребывания по штампу: строка вверху вкладки «Жизнь».
    Цвет предупреждает заранее: за неделю — акцент, в последние 3 дня и после — красный. */
 .visa{display:flex;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;color:var(--ink);
@@ -3868,15 +3870,16 @@ function rNotes(){
       <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/>
       <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Голосом</button>`:''}
     ${zhOpen?'<span class="spacer"></span><button class="btn sm ghost" id="nLock">Скрыть</button>':''}</div>
-  ${list.length?`<div class="card">${list.map((item,i)=>{
+  ${list.length?`${isEmo?'':'<div class="card">'}${list.map((item,i)=>{
     const book=nsec==='books', b=book&&(typeof item==='object'?item:{text:item,read:false});
     const text=book?b.text:item;
-    return `<div class="row" style="align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line-soft)">
+    /* «Дневник эмоций» (25.11.2026): каждая запись — своя карточка, вместе с разбором психолога */
+    return `${isEmo?'<div class="card emo-entry">':''}<div class="row" style="align-items:flex-start;padding:7px 0;${isEmo?'':'border-bottom:1px solid var(--line-soft)'}">
       ${book?`<button class="btn ghost bookRead${b.read?' on':''}" data-i="${i}" title="${b.read?'Отметить как непрочитанную':'Отметить как прочитанную'}" aria-label="${b.read?'Непрочитанная':'Прочитанная'}">${b.read?'✓':'○'}</button>`:''}
       <span class="nedit" data-i="${i}" style="flex:1;cursor:pointer;${book&&b.read?'color:var(--ink-3);text-decoration:line-through':''}">${hl(text)}</span>
       ${isEmo?`<button class="btn ghost psyBtn" data-i="${i}" title="${psyGet(text)?'Разобрать заново':'Разбор ИИ-психологом'}">${psyBusy[psyHash(text)]?'…':'🧠'}</button>`:''}
       <button class="btn ghost nd" data-i="${i}" title="Удалить">✕</button></div>
-      ${isEmo&&psyGet(text)?`<details class="psy"${psyOpen===psyHash(text)?' open':''}><summary>🧠 Разбор психолога · ${esc(new Date(psyGet(text).at).toLocaleDateString('ru',{day:'numeric',month:'short'}))}</summary><div class="ai-text">${aiHtml(psyGet(text).text)}</div></details>`:''}`}).join('')}</div>`
+      ${isEmo&&psyGet(text)?`<details class="psy"${psyOpen===psyHash(text)?' open':''}><summary>🧠 Разбор психолога · ${esc(new Date(psyGet(text).at).toLocaleDateString('ru',{day:'numeric',month:'short'}))}</summary><div class="ai-text">${aiHtml(psyGet(text).text)}</div></details>`:''}${isEmo?'</div>':''}`}).join('')}${isEmo?'':'</div>'}`
     :'<div class="empty">Пусто</div>'}`;
   $$('.ns').forEach(b=>b.onclick=()=>{if(b.id==='nsecBtn') sectionsSheet('notes',rNotes);else{nsec=b.dataset.s;rNotes()}});
   /* три быстрых тапа по слову «Заметки» открывают скрытый раздел */
