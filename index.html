@@ -791,6 +791,74 @@ function luzBackupSheet(getTok,app,fname,hint){
           setTimeout(()=>URL.revokeObjectURL(a.href),4000);b.textContent='Скачано'}
         catch(e){b.disabled=false;b.textContent='Ошибка — ещё раз'}};
       row.append(l,b);list.append(row)}})()}
+/* ===== Цели по здоровью (общий блок: одинаковый в Медкарте и Дневнике) =====
+   Цели живут в Медкарте — это «Планы и контроль» (data.plans). У плана есть вид (kind)
+   и привязка (match): по ней в Медкарте ищутся факты — когда это делали в последний раз
+   и с каким результатом. Дневник показывает те же цели только для чтения, из
+   localStorage['medcard.data'] (карта владельца на этом устройстве).
+   Привязка — слова через запятую (любое из них), внутри слова «+» — все части сразу:
+   «ферритин», «МРТ+шей», «УЗИ+почк, УЗИ+мошон». Ищется без учёта регистра, как часть
+   слова. Пустая привязка — подбирается по названию цели (HG_RULES), так что старые
+   планы и перенесённые цели работают без ручной настройки. */
+const HG_KINDS=['Анализ','Исследование','Лечение','Донация','Операция','Врач','Другое'];
+const HG_RULES=[
+  [/^\s*узнать|^\s*спросить|^\s*выяснить/i,'Другое',''],
+  [/контроль эрадикац|дыхательн[а-я]* тест|антиген h/i,'Анализ','pylori, хеликоб'],
+  [/ферритин/i,'Анализ','ферритин'],
+  [/тестостерон|половы[ех] гормон/i,'Анализ','тестостерон, ЛГ, ФСГ, ГСПГ, эстрадиол, пролактин'],
+  [/зппп|инфекци[ия] передающ/i,'Анализ','хламид, гонор, трихомон, микоплазм, уреаплазм, сифил, ВИЧ, андрофлор, патоген'],
+  [/аллерг|непереносим/i,'Анализ','IgE, аллерг'],
+  [/генетич/i,'Анализ','генет'],
+  [/хеликоб|pylori/i,'Лечение','pylori, хеликоб'],
+  [/фгдс|гастроскоп|эгдс/i,'Исследование','ФГДС, гастроскоп, ЭГДС'],
+  [/мрт.*шей|шей.*мрт/i,'Исследование','МРТ+шей'],
+  [/мрт.*поясн|поясн.*мрт/i,'Исследование','МРТ+поясн'],
+  [/узи.*мочепол|мочепол.*узи/i,'Исследование','УЗИ+почк, УЗИ+простат, УЗИ+мочев, УЗИ+мошон'],
+  [/фвд|спирометр/i,'Исследование','ФВД, спиро'],
+  [/донор|донац|сдать кровь|плазм/i,'Донация',''],
+  [/диспансериз|профосмотр|медосмотр/i,'Врач','диспансер, профосмотр, медосмотр'],
+  [/перегородк/i,'Операция','перегород, септопласт'],
+  [/ушн|уши|серн[а-я]* проб/i,'Врач','ушн, серн, оторинолар, сурдолог']];
+function hgRule(title){const t=String(title||'');for(const[re,k,m]of HG_RULES)if(re.test(t))return{kind:k,match:m};return{kind:'Другое',match:''}}
+/* вид и привязка плана: свои, если заданы, иначе — по названию */
+function hgLink(p){const r=hgRule(p&&p.title);return{kind:HG_KINDS.includes(p&&p.kind)?p.kind:r.kind,match:String(p&&p.match!=null&&p.match!==''?p.match:r.match)}}
+function hgTest(text,match){const s=String(text||'').toLowerCase();
+  return String(match||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean)
+    .some(term=>term.split('+').map(x=>x.trim()).filter(Boolean).every(w=>s.includes(w)))}
+const hgD=d=>{const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(d||''));return m?m[3]+'.'+m[2]+'.'+m[1]:''};
+/* Факты по плану: {date, text} самого свежего подходящего события или null.
+   med — данные карты (data в Медкарте, medcard.data в Дневнике). */
+function hgFacts(med,p){if(!med||!p)return null;const{kind,match}=hgLink(p),T=luzBkDay();
+  const arr=k=>Array.isArray(med[k])?med[k].filter(x=>x&&!x.del):[];
+  const best=a=>a.filter(x=>x.date&&x.date<=T).sort((a,b)=>a.date.localeCompare(b.date)).pop()||null;
+  if(kind==='Донация'){const d=best(arr('donations'));return d?{date:d.date,text:(d.type||'донация')+(d.volume?' '+d.volume+' мл':'')}:null}
+  if(!match)return null;
+  if(kind==='Анализ'){
+    const hits=[];for(const l of arr('labs'))for(const r of(l.results||[]))if(r&&hgTest(r.param,match)&&r.value!==''&&r.value!=null)hits.push({date:l.date,r});
+    /* по показателям и по названию бланка — берём то, что свежее */
+    const last=hits.filter(h=>h.date&&h.date<=T).map(h=>h.date).sort().pop()||'';
+    const l=best(arr('labs').filter(l=>hgTest((l.title||'')+' '+(l.panel||''),match)));
+    if(l&&l.date>last)return{date:l.date,text:l.title||l.panel||'анализ'};
+    if(last){const seen=new Set(),vals=[];for(const h of hits)if(h.date===last&&!seen.has(h.r.param)){seen.add(h.r.param);vals.push(h.r.param+' '+h.r.value+(h.r.unit?' '+h.r.unit:''))}
+      return{date:last,text:vals.slice(0,4).join(', ')+(vals.length>4?' и ещё '+(vals.length-4):'')}}
+    return null}
+  if(kind==='Исследование'){const x=best(arr('imaging').filter(x=>hgTest((x.type||'')+' '+(x.area||''),match)));
+    return x?{date:x.date,text:[x.type,x.area].filter(Boolean).join(' · ')+(x.conclusion?': '+String(x.conclusion).slice(0,90)+(String(x.conclusion).length>90?'…':''):'')}:null}
+  if(kind==='Лечение'){
+    const rg=arr('regimens').filter(r=>hgTest(r.title,match)&&r.start).sort((a,b)=>a.start.localeCompare(b.start)).pop();
+    const lab=(()=>{const hits=[];for(const l of arr('labs'))for(const r of(l.results||[]))if(r&&hgTest(r.param,match))hits.push({date:l.date,r});return hits.filter(h=>h.date&&h.date<=T).sort((a,b)=>a.date.localeCompare(b.date)).pop()})();
+    if(rg){const end=new Date(rg.start);end.setDate(end.getDate()+(+rg.days||1)-1);const e=end.toISOString().slice(0,10);
+      const st=T<rg.start?'начнётся '+hgD(rg.start):T<=e?'идёт до '+hgD(e):'закончен '+hgD(e);
+      if(lab&&lab.date>e)return{date:lab.date,text:'контроль: '+lab.r.param+' — '+lab.r.value};
+      return{date:T<=e?rg.start:e,text:(rg.title||'курс')+', '+st,course:T<=e}}
+    return lab?{date:lab.date,text:lab.r.param+' — '+lab.r.value}:null}
+  /* врач, операция, другое — по документам */
+  const d=best(arr('documents').filter(d=>hgTest((d.title||'')+' '+(d.kind||''),match)));
+  return d?{date:d.date,text:d.title||'документ'}:null}
+/* «есть в Медкарте» — свежий факт появился после того, как цель заведена */
+function hgDoneHint(p,f){return!!(f&&!f.course&&p&&p.created&&f.date>=p.created&&(p.status||'Запланировано')==='Запланировано')}
+const hgOpen=p=>p&&!p.del&&(p.status||'Запланировано')==='Запланировано';
+
 
 /* дневник держит эти настройки в CFG (clientId, aiKey, aiModel, aiProvider, dsKey, dsModel) */
 const luzDiaryOwn=()=>({clientId:CFG.clientId,aiKey:CFG.aiKey,aiModel:CFG.aiModel==='gemini-3.6-flash'?'':CFG.aiModel,
@@ -1118,7 +1186,7 @@ let dq='', gfilter='', nsec='';
    Скрытый раздел первым не выбираем, иначе он откроется сам собой. */
 function initFilters(){
   const s=SCOPES(), n=NSEC().filter(([k])=>(k!==HIDDEN_SEC||zhOpen)&&k!=='books');
-  if(!gfilter||!s.some(x=>x[0]===gfilter)) gfilter=s[0][0];
+  if(!gfilter||(gfilter===HG_TAB?!hgShow():!s.some(x=>x[0]===gfilter))) gfilter=s[0][0];
   if(!nsec||!n.some(x=>x[0]===nsec)) nsec=(n[0]||NSEC()[0])[0];
 }
 function migrateZh(){
@@ -2256,22 +2324,73 @@ function sectionsSheet(kind,after){
   };
   draw();
 }
+/* ===== Цели по здоровью — из Медкарты =====
+   С 27.11.2026 цели по здоровью ведутся в Медкарте («Цели и планы по здоровью», data.plans)
+   с привязкой к анализам, исследованиям, лечению и донациям. Медкарта один раз забирает
+   их из раздела дневника с «Здоров» в названии и помечает план id цели (gid).
+   Дневник только читает карту владельца из localStorage['medcard.data'] (тот же сайт,
+   то же устройство) и:
+   — убирает у себя цели, которые уже есть в Медкарте (по gid), а опустевший раздел
+     «Здоровье» удаляет совсем (ключ — в DB.secDel, чтобы не воскрес);
+   — показывает вкладку «🩻 Здоровье» (HG_TAB) с открытыми целями и фактами (общий блок hg*).
+   Править и отмечать цели — только в Медкарте: кнопка открывает её. */
+const HG_TAB='__med';
+function hgMed(){try{const v=JSON.parse(localStorage.getItem('medcard.data')||'null');return v&&typeof v==='object'&&Array.isArray(v.plans)?v:null}catch(e){return null}}
+const hgShow=()=>!!hgMed();
+function hgMigrate(med){med=med||hgMed();if(!med)return false;
+  const gids=new Set(med.plans.filter(p=>p&&p.gid).map(p=>p.gid));if(!gids.size)return false;
+  let ch=false;const n0=DB.goals.length;
+  DB.goals=DB.goals.filter(g=>!gids.has(g.id));if(DB.goals.length!==n0)ch=true;
+  DB.sec=DB.sec||{};DB.secDel=DB.secDel||{};
+  const hs=secs('goals').filter(([k,n])=>/здоров/i.test(n)&&!DB.goals.some(g=>g.scope===k));
+  if(hs.length&&secs('goals').length>hs.length){
+    DB.sec.goals=secs('goals').filter(([k])=>!hs.some(h=>h[0]===k));
+    DB.secDel.goals=DB.secDel.goals||[];hs.forEach(([k])=>{if(!DB.secDel.goals.includes(k))DB.secDel.goals.push(k)});ch=true}
+  if(ch){save();initFilters()}
+  return ch}
+const medUrl=()=>location.protocol==='file:'?'../Medcard/medcard.html#diag':'/medcard/#diag';
+function hgPane(med){
+  const all=med.plans.filter(p=>p&&!p.del);
+  const open=all.filter(hgOpen).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
+  const done=all.filter(p=>p.status==='Сделано'), T=today();
+  const fresh=med.updatedAt?new Date(med.updatedAt):null, age=fresh?Math.floor((Date.now()-fresh)/864e5):null;
+  const row=p=>{const f=hgFacts(med,p),L=hgLink(p),late=p.due&&p.due<T;
+    return `<div class="card hg-it">
+      <div class="row" style="gap:8px;align-items:flex-start">
+        <div style="flex:1;min-width:0"><b>${esc(p.title||'')}</b>
+          <div class="small muted" style="margin-top:3px">${esc(L.kind)}${p.due?` · <span style="${late?'color:var(--warn)':''}">${late?'просрочено, ':'до '}${hgD(p.due)}</span>`:''}</div>
+          ${f?`<div class="small" style="margin-top:5px;color:var(--ink-2)">📎 ${f.course?'Сейчас':'Последний раз'} ${hgD(f.date)}: ${esc(f.text)}</div>`
+            :(L.match||L.kind==='Донация')?'<div class="small muted" style="margin-top:5px">📎 В Медкарте пока ничего нет</div>':''}
+          ${hgDoneHint(p,f)?`<div class="small" style="margin-top:5px;color:var(--accent);font-weight:600">✓ В Медкарте есть свежее — отметьте там «Сделано»</div>`:''}
+        </div></div></div>`};
+  return `<div class="card">
+    <div class="row" style="gap:8px;align-items:center"><div style="flex:1;min-width:0"><b>🩻 Цели по здоровью</b>
+      <div class="small muted" style="margin-top:3px">Ведутся в Медкарте: там привязки к анализам и обследованиям, правка и отметки.${age!=null&&age>=3?` Данные Медкарты на этом устройстве — от ${hgD(iso(fresh))}, откройте её для обновления.`:''}</div></div>
+      <a class="btn sm" href="${medUrl()}">Открыть Медкарту</a></div>
+    <div class="row" style="margin-top:12px"><div class="bar" style="flex:1"><i style="width:${all.length?done.length/Math.max(1,open.length+done.length)*100:0}%"></i></div>
+      <span class="small muted">${done.length} из ${open.length+done.length}</span></div></div>
+  ${open.length?open.map(row).join(''):'<div class="empty">Открытых целей нет</div>'}
+  ${done.length?`<details class="card" style="padding-top:10px;padding-bottom:10px"><summary class="small muted">Выполнено: ${done.length}</summary>
+    ${done.sort((a,b)=>String(b.doneAt||b.due||'').localeCompare(String(a.doneAt||a.due||''))).map(p=>`<div class="small" style="margin-top:6px;opacity:.7">✓ ${esc(p.title||'')}${p.doneAt?' · '+hgD(p.doneAt):''}</div>`).join('')}</details>`:''}`;
+}
 function rGoals(){
+  const hgM=hgMed(); if(hgM) hgMigrate(hgM);
   initFilters();
   const scs=SCOPES(), g=DB.goals.filter(x=>x.scope===gfilter), done=g.filter(x=>x.done).length;
   $('#v-goals').innerHTML=`
   <div class="card">
     <div class="chips">
       ${scs.map(([k,n])=>`<button class="chip gf ${gfilter===k?'on':''}" data-s="${k}">${aiSecOn('goals',k)?'<span class="chip-ai" title="Доступен ИИ">🤖</span>':''}${n} ${DB.goals.filter(x=>x.scope===k).length}</button>`).join('')}
+      ${hgM?`<button class="chip gf ${gfilter===HG_TAB?'on':''}" data-s="${HG_TAB}" title="Цели по здоровью из Медкарты">🩻 Здоровье ${hgM.plans.filter(hgOpen).length}</button>`:''}
       <button class="chip gf" id="gsec" title="Управление разделами">⚙</button>
     </div>
-    <div style="margin-top:12px" class="row">
+    ${gfilter===HG_TAB?'':`<div style="margin-top:12px" class="row">
       <div class="bar" style="flex:1"><i style="width:${g.length?done/g.length*100:0}%"></i></div>
       <span class="small muted">${done} из ${g.length}</span>
     </div>
-    <button class="btn sm" id="gAdd" style="margin-top:11px">+ Новая цель</button>
+    <button class="btn sm" id="gAdd" style="margin-top:11px">+ Новая цель</button>`}
   </div>
-  ${g.length?g.map(x=>`
+  ${gfilter===HG_TAB?hgPane(hgM):g.length?g.map(x=>`
     <div class="row" style="margin-bottom:7px;gap:4px">
     <button class="pill gtg ${x.done?'on':''}" data-id="${x.id}" style="flex:1;margin:0">
       <span class="box"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg></span>
@@ -2284,6 +2403,7 @@ function rGoals(){
   $$('.gtg').forEach(b=>b.onclick=()=>{
     const x=DB.goals.find(y=>y.id===b.dataset.id); x.done=!x.done; save(); rGoals()});
   $$('.ged').forEach(b=>b.onclick=()=>editGoal(b.dataset.id));
+  if(gfilter===HG_TAB) return;
   $('#gAdd').onclick=()=>{
     openSheet(`<h2>Новая цель</h2>
       <label class="fld" style="margin-bottom:12px"><span>Текст</span><input type="text" id="gt"></label>
