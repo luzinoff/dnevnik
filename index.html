@@ -925,7 +925,9 @@ const ACT_GROUPS=[
  {g:'Английский', items:[
    {k:'eng_duo', ic:'🦉', lb:'Duolingo'},
    {k:'eng_ai',  ic:'🤖', lb:'AI-бот'},
-   {k:'eng_nat', ic:'🗣️', lb:'Носитель', hint:'общение с носителем языка', ask:'С кем говорил, о чём?'}]},
+   {k:'eng_nat', ic:'🗣️', lb:'Носитель', hint:'общение с носителем языка', ask:'С кем говорил, о чём?'},
+   /* добавлено 28.11.2026: смотрел видео на английском */
+   {k:'eng_vid', ic:'🎬', lb:'Видео', hint:'смотрел видео на английском', ask:'Что смотрел?'}]},
  {g:'Знания', items:[
    {k:'exp',    ic:'✨', lb:'Новый опыт', ask:'Что нового?'},
    {k:'places', ic:'🗺️', lb:'Новые места', ask:'Где был?'},
@@ -2621,7 +2623,7 @@ const HERO_SK=[
  {k:'end', ic:'🦶', lb:'Выносливость',  n:'Скороход',  a:'Неутомимый',    src:'Шаги за день: от 4 000 — 0,8, от 7 000 — 1,5, от 10 000 — 2 опыта. Пульс покоя влияет на состояния героя.'},
  {k:'rec', ic:'😴', lb:'Восстановление',n:'Сновидец',  a:'Отдохнувший',   src:'Сон 7–9,5 ч — 1,5 опыта (6–10,5 ч — 0,7), оценка браслета от 80 — +0,5, глубокий сон от 90 мин — +0,3, «Лёг» с 20:00 до 01:00 — +0,3.'},
  {k:'int', ic:'📚', lb:'Интеллект',     n:'Книжник',   a:'Мудрый',        src:'Книги и учёба — по 1,5 опыта.'},
- {k:'lng', ic:'🗣️', lb:'Полиглот',      n:'Толмач',    a:'Многоязычный',  src:'Duolingo — 1, AI-бот — 1,2, носитель — 2 опыта.'},
+ {k:'lng', ic:'🗣️', lb:'Полиглот',      n:'Толмач',    a:'Многоязычный',  src:'Duolingo — 1, AI-бот — 1,2, видео — 1, носитель — 2 опыта.'},
  {k:'cha', ic:'🙋', lb:'Харизма',       n:'Бард',      a:'Обаятельный',   src:'Знакомые — 1,5, новые люди — 2, соц касание — 0,7, инициатива — 1,5, посты — 1.'},
  {k:'exp', ic:'🗺️', lb:'Странник',      n:'Странник',  a:'Любопытный',    src:'Новый опыт — 1,5, новые места — 2.'},
  {k:'spi', ic:'🔥', lb:'Дух',           n:'Аскет',     a:'Стойкий',       src:'Воля и медитация — по 1,5, разбор эмоций — 1,2.'},
@@ -2633,14 +2635,14 @@ const HERO_SK=[
 const HERO_BY=Object.fromEntries(HERO_SK.map(s=>[s.k,s]));
 /* плитки с весами; счётчик больше 3 в опыт не идёт — чтобы десять отметок
    за день не перевешивали месяц */
-const HERO_W={int:{books:1.5,study:1.5},lng:{eng_duo:1,eng_ai:1.2,eng_nat:2},
+const HERO_W={int:{books:1.5,study:1.5},lng:{eng_duo:1,eng_ai:1.2,eng_vid:1,eng_nat:2},
   cha:{friends:1.5,people:2,touch:.7,init:1.5,post:1},exp:{exp:1.5,places:2},spi:{will:1.5,medit:1.5,emo:1.2},
   biz:{house:1,gig:1.5,money:1.5},hlt:{health:1.5},rom:{dapp:.5,dating:2,sexn:1.5}};
 const HERO_SKB=30, HERO_HB=120; /* база кривой: уровень n требует base·n(n−1)/2 опыта */
 const heroLvl=(xp,b)=>Math.floor((1+Math.sqrt(1+8*Math.max(0,xp)/b))/2);
 const heroNeed=(n,b)=>b*n*(n-1)/2;
 const heroCnt=(x,k)=>Math.min(3,+x[k]||0);
-const heroEng=x=>+x.eng_duo>0||+x.eng_ai>0||+x.eng_nat>0;
+const heroEng=x=>+x.eng_duo>0||+x.eng_ai>0||+x.eng_nat>0||+x.eng_vid>0;
 function heroKm(x){
   let s=0;
   for(const v of Object.values(x.ex||{})){const re=/(\d+(?:[.,]\d+)?)\s*км/g;let m;while((m=re.exec(String(v))))s+=parseFloat(m[1].replace(',','.'))||0}
@@ -3136,8 +3138,8 @@ function rStats(){
       sscore:avg(L.map(d=>DB.days[d].sleepScore).filter(Boolean)),
       deep:avg(L.map(d=>DB.days[d].deepMin).filter(Boolean)),
       sport:L.filter(d=>DB.days[d].sport).length,
-      /* английский — любой из трёх способов за день */
-      eng:L.filter(d=>{const x=DB.days[d];return x.eng_duo||x.eng_ai||x.eng_nat}).length,
+      /* английский — любой из четырёх способов за день */
+      eng:L.filter(d=>{const x=DB.days[d];return x.eng_duo||x.eng_ai||x.eng_nat||x.eng_vid}).length,
       social:L.filter(d=>{const x=DB.days[d];return x.friends||x.people||x.dating}).length
     };
   };
